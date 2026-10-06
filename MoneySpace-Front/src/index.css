@@ -1,0 +1,15 @@
+/* Estilos globais. A ordem dos 2 imports é obrigatória (Tailwind primeiro). */
+@import "tailwindcss";
+@import "@heroui/styles";
+
+/* Faz as classes "dark:" funcionarem quando <html class="dark"> */
+@custom-variant dark (&:is(.dark *));
+
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
