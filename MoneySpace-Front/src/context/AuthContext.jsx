@@ -5,6 +5,7 @@
 // Disponível em toda a aplicação através do hook useAuth()
 
 import { createContext, useContext, useState, useEffect } from 'react';
+import api from '../services/api';
 
 // Cria o contexto
 const AuthContext = createContext();
@@ -26,15 +27,31 @@ export function AuthProvider({ children }) {
   // True enquanto carrega dados do usuário
   const [loading, setLoading] = useState(true);
 
-  // Verifica se tem token ao carregar a página
+  // Ao carregar a página: se houver token salvo, busca os dados do usuário
+  // em /me para reidratar o estado (nome, família, etc.) sem depender só do
+  // que estava em memória antes do refresh.
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
-    if (savedToken) {
-      setToken(savedToken);
-      // Aqui você poderia chamar a API para pegar os dados do usuário
-      // Por enquanto, apenas carrega o token
+
+    if (!savedToken) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    setToken(savedToken);
+
+    api
+      .get('/me')
+      .then((resposta) => {
+        setUser(resposta.data.data.usuario);
+      })
+      .catch(() => {
+        // Token inválido/expirado: limpa a sessão.
+        localStorage.removeItem('token');
+        setToken(null);
+        setUser(null);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   // Função para fazer login

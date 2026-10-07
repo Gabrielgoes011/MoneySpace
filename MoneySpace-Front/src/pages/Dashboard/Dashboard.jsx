@@ -25,13 +25,17 @@ import {
 function CardResumo({ icon: Icon, titulo, valor, cor, oculto }) {
   return (
     <Card>
-      <Card.Content className="flex items-center gap-4 py-4">
-        <div className={`flex items-center justify-center size-11 rounded-xl ${cor}`}>
-          <Icon size={22} />
+      {/* Mobile: ícone em cima do texto (empilhado, mais compacto).
+          Desktop (sm+): ícone ao lado do texto (lado a lado). */}
+      <Card.Content className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-3 sm:py-4">
+        <div className={`flex items-center justify-center size-9 sm:size-11 rounded-xl ${cor}`}>
+          <Icon className="size-5 sm:size-[22px]" />
         </div>
-        <div>
-          <p className="text-xs text-foreground-500">{titulo}</p>
-          <p className="text-lg font-bold">{formatarDinheiroPrivado(valor, oculto)}</p>
+        <div className="min-w-0">
+          <p className="text-xs text-foreground-500 truncate">{titulo}</p>
+          <p className="text-base sm:text-lg font-bold truncate">
+            {formatarDinheiroPrivado(valor, oculto)}
+          </p>
         </div>
       </Card.Content>
     </Card>
@@ -52,24 +56,31 @@ function Dashboard() {
     .sort((a, b) => a.dt_transacao.localeCompare(b.dt_transacao));
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-4 sm:space-y-6">
       {/* ── Cabeçalho ──────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Olá, {user?.nome || 'por aqui'} 👋</h1>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold truncate">
+            Olá, {user?.nome || 'por aqui'} 👋
+          </h1>
           <p className="text-sm text-foreground-500">Aqui está o resumo do seu mês.</p>
         </div>
+        {/* No mobile vira botão só de ícone; no desktop mostra o texto. */}
         <Button
           variant="ghost"
           onPress={togglePrivacidade}
-          startContent={valoresOcultos ? <FiEye size={18} /> : <FiEyeOff size={18} />}
+          aria-label={valoresOcultos ? 'Mostrar valores' : 'Ocultar valores'}
+          className="shrink-0"
         >
-          {valoresOcultos ? 'Mostrar valores' : 'Ocultar valores'}
+          {valoresOcultos ? <FiEye size={18} /> : <FiEyeOff size={18} />}
+          <span className="hidden sm:inline">
+            {valoresOcultos ? 'Mostrar valores' : 'Ocultar valores'}
+          </span>
         </Button>
       </div>
 
-      {/* ── Cards de resumo ────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── Cards de resumo (2 colunas no mobile, 4 no desktop) ──── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <CardResumo
           icon={FiDollarSign}
           titulo="Saldo do mês"
@@ -100,7 +111,7 @@ function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* ── Gastos por categoria ─────────────────────────────── */}
         <Card>
           <Card.Header>
@@ -143,14 +154,14 @@ function Dashboard() {
               <p className="text-sm text-foreground-500">Nada pendente. 🎉</p>
             )}
             {proximasContas.map((t) => (
-              <div key={t.id} className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">{t.descricao}</p>
-                  <p className="text-xs text-foreground-500">
+              <div key={t.id} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{t.descricao}</p>
+                  <p className="text-xs text-foreground-500 truncate">
                     {t.categoria} · vence {formatarData(t.dt_transacao)}
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="flex flex-col items-end gap-1 shrink-0">
                   <p className="text-sm font-semibold">
                     {formatarDinheiroPrivado(t.valor, valoresOcultos)}
                   </p>

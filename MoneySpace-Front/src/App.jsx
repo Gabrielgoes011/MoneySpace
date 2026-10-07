@@ -17,6 +17,7 @@ import Dashboard from './pages/Dashboard/Dashboard';
 import Transacoes from './pages/Transacoes/Transacoes';
 import Contas from './pages/Contas/Contas';
 import Categorias from './pages/Categorias/Categorias';
+import Usuarios from './pages/Usuarios/Usuarios';
 import Layout from './components/Layout/Layout';
 
 // Hook de autenticação
@@ -71,7 +72,9 @@ function AppRoutes() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/transacoes" element={<Transacoes />} />
           <Route path="/contas" element={<Contas />} />
-          <Route path="/categorias" element={<Categorias />} />
+          {/* Cadastros (parte administrativa) */}
+          <Route path="/cadastros/usuarios" element={<Usuarios />} />
+          <Route path="/cadastros/categorias" element={<Categorias />} />
         </Route>
       ) : (
         // Se não está autenticado, redireciona para login

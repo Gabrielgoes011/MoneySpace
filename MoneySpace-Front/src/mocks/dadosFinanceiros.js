@@ -63,3 +63,10 @@ export function gastosPorCategoria() {
     .map(([nome, total]) => ({ nome, total, cor: cor(nome) }))
     .sort((a, b) => b.total - a.total);
 }
+
+// Usuários da família (tabela `usuario`)
+export const usuarios = [
+  { id: 'u1', nome: 'Gabriel Goes', email: 'gabrielgoes20@gmail.com', mfa_ativo: false },
+  { id: 'u2', nome: 'Maria Goes', email: 'maria@email.com', mfa_ativo: true },
+  { id: 'u3', nome: 'Pedro Goes', email: 'pedro@email.com', mfa_ativo: false },
+];

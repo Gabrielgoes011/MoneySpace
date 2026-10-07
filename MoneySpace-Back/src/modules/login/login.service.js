@@ -27,6 +27,7 @@ function montarUsuarioPublico(usuario) {
     return {
         id: usuario.id,
         id_familia: usuario.id_familia,
+        familia_nome: usuario.familia_nome,
         nome: usuario.nome,
         email: usuario.email,
         mfa_ativo: !!usuario.mfa_ativo,
@@ -40,6 +41,7 @@ function gerarAccessToken(usuario) {
         {
             id: usuario.id,
             id_familia: usuario.id_familia,
+            familia_nome: usuario.familia_nome,
             nome: usuario.nome,
             email: usuario.email,
         },

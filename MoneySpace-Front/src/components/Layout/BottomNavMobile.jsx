@@ -4,15 +4,15 @@
 // No celular o menu fica embaixo da tela (mais fácil de tocar com o polegar)
 
 import { NavLink } from 'react-router-dom';
-import { FiHome, FiList, FiCreditCard, FiTag } from 'react-icons/fi';
+import { FiHome, FiList, FiCreditCard, FiUsers } from 'react-icons/fi';
 
 function BottomNavMobile() {
-  // Mesmos links da Sidebar
+  // Atalhos rápidos no mobile. Cadastros ficam acessíveis pelo menu lateral (avatar).
   const links = [
     { icon: FiHome, label: 'Início', path: '/' },
     { icon: FiList, label: 'Transações', path: '/transacoes' },
     { icon: FiCreditCard, label: 'Contas', path: '/contas' },
-    { icon: FiTag, label: 'Categorias', path: '/categorias' },
+    { icon: FiUsers, label: 'Usuários', path: '/cadastros/usuarios' },
   ];
 
   return (

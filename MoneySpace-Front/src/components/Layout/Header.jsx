@@ -1,12 +1,14 @@
 // ========================================
 // HEADER (barra superior)
 // ========================================
-// O HeroUI v3 não tem Navbar, então é um <header> simples com Buttons do HeroUI.
+// À esquerda: avatar do usuário (abre o menu lateral, estilo LinkedIn) + marca.
+// À direita: alternância de tema e sair (atalhos rápidos no desktop).
 
 import { Button } from '@heroui/react';
 import { FiLogOut, FiSun, FiMoon } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import MenuLateral from './MenuLateral';
 
 function Header() {
   const { user, logout } = useAuth();
@@ -14,8 +16,13 @@ function Header() {
 
   return (
     <header className="flex items-center justify-between px-4 py-3 border-b border-black/10 dark:border-white/10">
-      <p className="font-bold text-lg">MoneySpace</p>
+      {/* Esquerda: avatar (abre o menu lateral) + marca */}
+      <div className="flex items-center gap-3">
+        <MenuLateral />
+        <p className="font-bold text-lg">MoneySpace</p>
+      </div>
 
+      {/* Direita: atalhos rápidos */}
       <div className="flex items-center gap-2">
         {user && (
           <span className="hidden sm:block text-sm">

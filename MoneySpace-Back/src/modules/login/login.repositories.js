@@ -16,10 +16,13 @@ import { openDb } from '../../config/configDb.js';
 async function findUserByEmail(email) {
     const db = await openDb();
 
+    // JOIN com familia para já trazer o NOME da família (exibido no app).
     const result = await db.query(
-        `SELECT id, id_familia, nome, email, senha, mfa_secreto, mfa_ativo
-           FROM usuario
-          WHERE LOWER(email) = LOWER($1)
+        `SELECT u.id, u.id_familia, u.nome, u.email, u.senha, u.mfa_secreto, u.mfa_ativo,
+                f.nome AS familia_nome
+           FROM usuario u
+           JOIN familia f ON f.id = u.id_familia
+          WHERE LOWER(u.email) = LOWER($1)
           LIMIT 1`,
         [email]
     );
@@ -32,9 +35,11 @@ async function findUserById(userId) {
     const db = await openDb();
 
     const result = await db.query(
-        `SELECT id, id_familia, nome, email, mfa_secreto, mfa_ativo
-           FROM usuario
-          WHERE id = $1
+        `SELECT u.id, u.id_familia, u.nome, u.email, u.mfa_secreto, u.mfa_ativo,
+                f.nome AS familia_nome
+           FROM usuario u
+           JOIN familia f ON f.id = u.id_familia
+          WHERE u.id = $1
           LIMIT 1`,
         [userId]
     );
