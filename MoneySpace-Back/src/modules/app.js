@@ -10,6 +10,7 @@ import cookieParser from 'cookie-parser';
 
 import healthRoutes from '../routes/health.routes.js';
 import loginRoutes from './login/login.routes.js';
+import contaRoutes from './conta/conta.routes.js';
 import httpResponse from '../utils/httpResponse.js';
 import { rlsMiddleware } from '../middleware/rlsMiddleware.js';
 
@@ -45,6 +46,7 @@ app.use(rlsMiddleware);
 // ── Rotas ─────────────────────────────────────────────────────────────────
 app.use('/health', healthRoutes);
 app.use('/', loginRoutes);
+app.use('/', contaRoutes);
 
 // Rota raiz: mensagem simples só para confirmar que a API respondeu.
 app.get('/', (req, res) =>

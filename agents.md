@@ -3,6 +3,13 @@
 Não é documento de marketing. É contexto técnico denso para a IA ler no início de
 cada sessão, entender o projeto e codar no padrão sem revasculhar tudo.
 
+## Divisão de trabalho (acordo com o Gabriel)
+- FRONTEND: a IA implementa completo (telas, componentes HeroUI, toasts, chamadas à API).
+- BACKEND: o GABRIEL escreve as funções. A IA pode criar o ESQUELETO dos arquivos
+  (controller/service/repository/routes) com assinaturas + comentários `// implementar: ...`,
+  mas NÃO implementa a lógica das funções do backend. A IA apoia: alinha contrato de API,
+  mostra o padrão existente, revisa e tira dúvida pontual. Mão no código do back = Gabriel.
+
 ## Regras de manutenção deste arquivo (para a IA)
 - Ler este arquivo ANTES de codar. Seguir os padrões da seção CONVENÇÕES à risca.
 - Manter atualizado SEMPRE que algo mudar. Em especial:
@@ -62,6 +69,11 @@ Erro de regra de negócio = `throw new Error('msg')` no service, usa a própria 
   Navigation, Overlays, Feedback, Buttons, Controls, Pickers, Date and Time, Media,
   Typography, Colors, Utilities.
 - API composta (dot notation): `Card.Header/Title/Content`, `InputGroup.Input/Prefix`. Seguir.
+- Padrão lista x tabela:
+  - Poucos itens heterogêneos (ex.: Minhas Contas, 2.1) -> lista de CARDS vertical (melhor no mobile).
+  - Muitos itens tabulares (ex.: Transações/Lançamentos, fase 3) -> `Table` do HeroUI
+    com `Table.ScrollContainer` (scroll horizontal no mobile), seleção, sort e célula de ações.
+    Ref. do componente escolhido para a fase 3: https://heroui.com/en/docs/react/components/table
 - HeroUI = React Aria + Tailwind v4 -> acessível por padrão. Preservar (`aria-label` quando a doc pedir).
 - Mobile-first: hook `useIsMobile` (`src/hooks/`) p/ BottomNav(mobile) vs Sidebar(desktop);
   preferir responsividade nativa do HeroUI.
@@ -134,11 +146,15 @@ policies filtram por esse contexto. Categoria do sistema (`padrao_sistema=true`,
 - Frontend build (valida produção): `cd MoneySpace-Front && npm run build`.
 
 ## ESTADO
-- Fase 1 — Fundação (Autenticação & Segurança).
-- Concluído: 1.1 Login Simples (email+senha); 1.4 Logout e Contexto de Segurança. Ambos testados.
+- Fase 1 concluída em parte: 1.1 Login e 1.4 Logout (testados).
+- Fase 2 iniciada: 2.1 Contas — FRONTEND pronto; BACKEND só esqueleto (Gabriel implementa).
 - Roles: migration 02 aplicada no Neon; conta do dono = `is_master=true, role='ADMIN'`.
-- PRÓXIMO: ligar `is_master`/`role` no JWT (`login.service.js`) + middlewares `exigirMaster`/`exigirAdmin`.
-  Depois: 1.2 Criar Família + Primeiro Usuário (e 1.3 MFA no front).
+- PENDÊNCIAS BACKEND (Gabriel):
+  - Implementar funções do módulo `src/modules/conta/` (controller/service/repositories).
+  - Ligar `is_master`/`role` no JWT (`login.service.js`) + middlewares `exigirMaster`/`exigirAdmin`.
+- PRÓXIMO (front): 1.2 Criar Família + Primeiro Usuário; 1.3 MFA no front.
+- Contrato da API de contas (já consumido pelo front em `services/contaService.js`):
+  GET `/contas` -> `{data:{contas:[...]}}`; POST `/contas`; PUT `/contas/:id`; DELETE `/contas/:id`.
 
 ## LOG
 - 2026-10-08:
@@ -153,6 +169,12 @@ policies filtram por esse contexto. Categoria do sistema (`padrao_sistema=true`,
     Set-Cookie com Expires 1970 nos dois cookies); `AuthContext.logout()` async chama o
     endpoint + limpa localStorage; `api.js` com `withCredentials:true`; Header e MenuLateral
     redirecionam p/ `/login` após sair.
+  - 2.1 Contas (front): tela "Minhas Contas" (`src/pages/Contas/Contas.jsx`) com cards +
+    `ContaFormModal.jsx` (criar/editar; campos mudam por tipo CORRENTE/CARTEIRA/CREDITO).
+    `services/contaService.js` consome a API com fallback p/ mocks + toast em DEV.
+    Backend `src/modules/conta/` criado só como ESQUELETO (Gabriel implementa); rotas já
+    registradas em `modules/app.js`. Build do front OK. Nota: `react-icons/fi` NÃO tem
+    `FiWallet` -> usar `FiPocket` p/ carteira.
 
 ## DÍVIDAS
 - (nenhuma aberta)

@@ -48,13 +48,15 @@
 **Dependência:** Fase 1 (precisa estar logado)  
 **Tempo estimado:** ~1-2 semanas
 
-### 2.1 Cadastrar Contas (Corrente, Carteira, Cartão) 🔴
-- Tela "Minhas Contas"
-- Criar conta corrente (saldo_inicial)
-- Criar carteira (dinheiro vivo)
-- Criar cartão de crédito (com limite, dias de fechamento/vencimento)
-- Editar conta
+### 2.1 Cadastrar Contas (Corrente, Carteira, Cartão) 🔴 🚧 EM ANDAMENTO
+- [x] Tela "Minhas Contas" (front) — cards + modal de criar/editar
+- [x] Criar conta corrente (saldo_inicial) — form (front)
+- [x] Criar carteira (dinheiro vivo) — form (front)
+- [x] Criar cartão de crédito (limite, dias de fechamento/vencimento) — form (front)
+- [x] Editar conta — modal reaproveitado (front)
+- [ ] Backend: implementar funções de `src/modules/conta/` (Gabriel) — hoje é só esqueleto
 - **Saída:** Dashboard mostra suas contas com saldos
+- Obs.: front consome `GET/POST/PUT/DELETE /contas`; com backend em dev, cai em mock + toast.
 
 ### 2.2 Visualizar Saldos Totais 🔴
 - Dashboard principal
