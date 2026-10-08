@@ -252,6 +252,26 @@ CREATE TABLE email_destinatario (
     CONSTRAINT uq_email_familia UNIQUE (id_familia, email)  -- sem email duplicado na família
 );
 
+-- ----------------------------------------------------------------------------
+-- transferencia: transferência de dinheiro entre membros da família.
+--   Registra PIX/transferência interna de um usuário para outro, com histórico.
+--   Ex: { id_usuario_remetente:'uuu1', id_usuario_destinatario:'uuu2',
+--          valor:500.00, descricao:'Mesada', dt_transferencia:'2026-03-15 10:30:00' }
+-- ----------------------------------------------------------------------------
+CREATE TABLE transferencia (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id_familia UUID NOT NULL REFERENCES familia(id) ON DELETE CASCADE,
+    id_usuario_remetente UUID NOT NULL REFERENCES usuario(id),    -- quem enviou
+    id_usuario_destinatario UUID NOT NULL REFERENCES usuario(id), -- quem recebeu
+
+    valor NUMERIC(14,2) NOT NULL,                 -- valor em reais
+    descricao VARCHAR(255),                       -- opcional (ex: 'Mesada', 'Gasto compartilhado')
+
+    dt_transferencia TIMESTAMP DEFAULT NOW(),     -- quando a transferência foi feita
+    usuario_cadastro VARCHAR(100),                -- nome de quem registrou
+    dt_cadastro TIMESTAMP DEFAULT NOW()
+);
+
 
 -- ============================================================================
 -- 3. ÍNDICES (performance)
@@ -279,6 +299,11 @@ CREATE INDEX idx_transacao_status  ON transacao(status);
 CREATE INDEX idx_preferencia_familia  ON preferencia_notificacao(id_familia);
 CREATE INDEX idx_destinatario_familia ON email_destinatario(id_familia);
 
+CREATE INDEX idx_transferencia_familia ON transferencia(id_familia);
+CREATE INDEX idx_transferencia_remetente ON transferencia(id_usuario_remetente);
+CREATE INDEX idx_transferencia_destinatario ON transferencia(id_usuario_destinatario);
+CREATE INDEX idx_transferencia_data ON transferencia(dt_transferencia);
+
 
 -- ============================================================================
 -- 4. ROW-LEVEL SECURITY (RLS)
@@ -301,6 +326,7 @@ ALTER TABLE compra    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transacao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE preferencia_notificacao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_destinatario ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transferencia ENABLE ROW LEVEL SECURITY;
 
 -- 4.1 Policies: "só vejo/edito o que é da minha família".
 CREATE POLICY acesso_usuario ON usuario
@@ -338,6 +364,9 @@ CREATE POLICY alterar_categoria ON categoria
         id_familia = current_setting('app.current_familia_id', true)::uuid
         AND padrao_sistema = false
     );
+
+CREATE POLICY acesso_transferencia ON transferencia
+    FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
 
 
 -- ============================================================================
