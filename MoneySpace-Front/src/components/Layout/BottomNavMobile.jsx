@@ -16,7 +16,12 @@ function BottomNavMobile() {
   ];
 
   return (
-    <nav className="bg-background border-t border-black/10 dark:border-white/10 flex">
+    // pb com safe-area-inset-bottom: reserva o espaço do indicador "home" do
+    // iPhone (área segura), senão a barra fica cortada embaixo no iOS.
+    <nav
+      className="bg-background border-t border-black/10 dark:border-white/10 flex"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
       {links.map((link) => {
         const Icon = link.icon;
         return (
