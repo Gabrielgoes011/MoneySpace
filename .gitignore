@@ -21,6 +21,10 @@ node_modules/
 # Builds
 dist/
 build/
+# EXCEÇÃO (deploy Discloud / Opção A): o front é compilado localmente e o
+# dist é versionado, pois a Discloud sobe exatamente o que está no commit.
+!MoneySpace-Front/dist/
+!MoneySpace-Front/dist/**
 
 # Variáveis de ambiente (NUNCA versionar segredos)
 .env

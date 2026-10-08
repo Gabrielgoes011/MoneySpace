@@ -2,7 +2,9 @@
 node_modules/
 
 # Build
-dist/
+# dist/ é versionado de propósito para o deploy na Discloud (Opção A):
+# o front é compilado localmente e o resultado sobe no commit.
+# dist/
 dist-ssr/
 *.local
 

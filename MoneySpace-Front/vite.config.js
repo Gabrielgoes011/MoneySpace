@@ -10,6 +10,14 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // Em dev, encaminha as chamadas /api para o backend (porta 8080),
+    // assim o front usa o mesmo caminho relativo que em produção.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
   },
   optimizeDeps: {
     // O HeroUI v3 puxa uma árvore grande de dependências (react-aria,

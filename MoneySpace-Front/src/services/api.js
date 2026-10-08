@@ -8,7 +8,10 @@ import axios from 'axios';
 
 // Cria instância do Axios
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  // Caminho relativo /api: em produção o próprio back serve o front e a API
+  // sob o mesmo domínio. Em dev, defina VITE_API_URL=http://localhost:8080/api
+  // no .env.local (ou use o proxy do Vite).
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 10000, // 10 segundos
   // Envia/recebe cookies httpOnly (ex.: refreshToken e o logout que os limpa).
   // O backend tem CORS com credentials: true para aceitar isso.

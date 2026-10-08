@@ -7,12 +7,23 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+import fs from 'fs';
 
 import healthRoutes from '../routes/health.routes.js';
 import loginRoutes from './login/login.routes.js';
 import contaRoutes from './conta/conta.routes.js';
 import httpResponse from '../utils/httpResponse.js';
 import { rlsMiddleware } from '../middleware/rlsMiddleware.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Caminho do front compilado (gerado por `npm run build` no front e servido
+// por este mesmo app em produção). Sobe de src/modules → src → raiz do back →
+// raiz do monorepo → MoneySpace-Front/dist.
+const FRONT_DIST = resolve(__dirname, '../../../MoneySpace-Front/dist');
 
 const app = express();
 
@@ -43,18 +54,40 @@ app.use(cookieParser());
 // Em rotas públicas (sem req.user) ele apenas passa direto.
 app.use(rlsMiddleware);
 
-// ── Rotas ─────────────────────────────────────────────────────────────────
-app.use('/health', healthRoutes);
-app.use('/', loginRoutes);
-app.use('/', contaRoutes);
+// ── Rotas da API ────────────────────────────────────────────────────────────
+// Tudo sob /api para não conflitar com o front servido na raiz (/).
+app.use('/api/health', healthRoutes);
+app.use('/api', loginRoutes);
+app.use('/api', contaRoutes);
 
-// Rota raiz: mensagem simples só para confirmar que a API respondeu.
-app.get('/', (req, res) =>
+// Ping da API (confirma que o backend respondeu).
+app.get('/api', (req, res) =>
   httpResponse.success(res, 'API do MoneySpace no ar 🚀', { versao: '1.0.0' })
 );
 
-// ── 404 ─────────────────────────────────────────────────────────────────────
-app.use((req, res) => httpResponse.notFound(res, 'Rota não encontrada.'));
+// 404 para rotas de API não encontradas (não cai no fallback do SPA).
+app.use('/api', (req, res) => httpResponse.notFound(res, 'Rota não encontrada.'));
+
+// ── Front compilado (SPA) ─────────────────────────────────────────────────
+// Serve os arquivos estáticos do build do front e faz fallback para o
+// index.html em qualquer rota que não seja /api, para o React Router cuidar
+// do roteamento no cliente. Só ativa se o dist existir (em dev local sem
+// build, o front roda pelo Vite em :5173 e isto fica inerte).
+if (fs.existsSync(FRONT_DIST)) {
+  app.use(express.static(FRONT_DIST));
+
+  app.get('*', (req, res) => {
+    res.sendFile(resolve(FRONT_DIST, 'index.html'));
+  });
+} else {
+  // Sem build do front: responde algo útil na raiz em vez de 404 seco.
+  app.get('/', (req, res) =>
+    httpResponse.success(res, 'MoneySpace API no ar. Front não compilado (sem dist).', {
+      dica: 'Rode `npm run build` no front ou use o Vite em dev (:5173).',
+    })
+  );
+  app.use((req, res) => httpResponse.notFound(res, 'Rota não encontrada.'));
+}
 
 // ── Handler de erros ─────────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
