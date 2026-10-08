@@ -11,7 +11,6 @@
     "install:front": "npm --prefix MoneySpace-Front install",
     "install:all": "npm run install:back && npm run install:front",
     "build:front": "npm --prefix MoneySpace-Front run build",
-    "build": "npm run build:front",
     "start": "npm --prefix MoneySpace-Back run start"
   }
 }

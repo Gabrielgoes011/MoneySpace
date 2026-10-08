@@ -16,11 +16,18 @@ A Discloud sobe exatamente o que está no commit — ela NÃO compila o front.
 
 ```bash
 # na raiz do projeto
-npm run build          # compila o front -> MoneySpace-Front/dist
+npm run build:front    # compila o front -> MoneySpace-Front/dist
 git add .              # inclui o código E o dist atualizado
 git commit -m "..."
 git push               # Discloud detecta e faz o deploy sozinha
 ```
+
+> **Por que `build:front` e não `build`?** A Discloud roda `npm run build --if-present`
+> na raiz automaticamente. Se existisse um script `build` na raiz, ela tentaria
+> compilar o front NO SERVIDOR (e falha: faltam deps como `cross-env` e estoura
+> memória). Por isso o script de build do front na raiz se chama `build:front` — a
+> Discloud não o encontra como `build` e segue direto, usando o `dist` já commitado.
+> **Não crie um script `build` na raiz.**
 
 ### Fluxo quando mudou só o BACK (nada no front)
 
@@ -79,7 +86,7 @@ START=node MoneySpace-Back/server.js
 
 1. Compilar o front (gera o `dist` que o back serve):
    ```bash
-   npm run build
+   npm run build:front
    ```
 2. Subir o back na porta 8080 (PowerShell):
    ```powershell
@@ -99,7 +106,7 @@ START=node MoneySpace-Back/server.js
 
 ## Checklist antes do push de deploy
 
-- [ ] Mexeu no front? Rodei `npm run build`.
+- [ ] Mexeu no front? Rodei `npm run build:front`.
 - [ ] `MoneySpace-Front/dist` está no commit (`git status` mostra o dist).
 - [ ] Nenhum `.env*` no commit (`git status` não lista `.env`).
 - [ ] Variáveis cadastradas no painel da Discloud (`NODE_ENV`, `DATABASE_URL`, `JWT_SECRET`).
