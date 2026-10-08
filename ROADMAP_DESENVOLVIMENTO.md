@@ -34,11 +34,12 @@
 - `mfa_ativo` controlando se é obrigatório
 - **Saída:** Login com 2 fatores funcionando
 
-### 1.4 Logout e Contexto de Segurança 🔴
-- Botão de logout no app
-- JWT limpo do localStorage
-- Redirecionamento para login
-- **Saída:** Sessão finalizada corretamente
+### 1.4 Logout e Contexto de Segurança 🔴 ✅ CONCLUÍDA
+- [x] Botão de logout no app (Header + MenuLateral)
+- [x] JWT limpo do localStorage
+- [x] Cookies httpOnly (token + refreshToken) limpos no backend via `POST /logout`
+- [x] Redirecionamento para login
+- **Saída:** Sessão finalizada corretamente ✅
 
 ---
 

@@ -52,6 +52,15 @@ function setRefreshCookie(res, refreshToken) {
   });
 }
 
+// Remove os cookies de autenticação. clearCookie precisa receber os MESMOS
+// atributos (path, sameSite, secure, httpOnly) usados ao criar — senão o
+// navegador não casa o cookie e ele continua vivo. Por isso o refreshToken
+// é limpo com o seu path específico ('/auth/refresh').
+function limparCookiesAuth(res) {
+  res.clearCookie('token', baseCookieOptions());
+  res.clearCookie('refreshToken', { ...baseCookieOptions(), path: '/auth/refresh' });
+}
+
 //#region => Lógica para login
 async function loginController(req, res) {
   try {
@@ -147,6 +156,15 @@ async function refreshController(req, res) {
     return httpResponse.error(res, secureMessage, 401);
   }
 }
+
+// Encerra a sessão: limpa os cookies httpOnly (access e refresh) no navegador.
+// É idempotente e público — não exige token válido, pois o objetivo é justamente
+// derrubar a sessão (um token já expirado ainda deve conseguir "sair"). O front
+// complementa limpando o localStorage.
+function logoutController(req, res) {
+  limparCookiesAuth(res);
+  return httpResponse.success(res, 'Sessão finalizada.', null, 200);
+}
 //#endregion
 
 //#region => Lógica para 2FA
@@ -233,6 +251,7 @@ export {
   login2faController,
   meController,
   refreshController,
+  logoutController,
   iniciar2faController,
   confirmar2faController,
   desativar2faController,

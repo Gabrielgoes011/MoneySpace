@@ -10,6 +10,9 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
   timeout: 10000, // 10 segundos
+  // Envia/recebe cookies httpOnly (ex.: refreshToken e o logout que os limpa).
+  // O backend tem CORS com credentials: true para aceitar isso.
+  withCredentials: true,
 });
 
 // ========================================

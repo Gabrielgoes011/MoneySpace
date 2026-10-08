@@ -85,12 +85,22 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(userData));
   };
 
-  // Função para fazer logout
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  // Função para fazer logout.
+  // 1) Pede ao backend para limpar os cookies httpOnly (token + refreshToken) —
+  //    isso invalida a sessão do lado do servidor, não só no front.
+  // 2) Limpa o estado e o localStorage sempre, mesmo se a chamada falhar
+  //    (ex.: backend fora do ar): o usuário NÃO pode ficar "preso" logado.
+  const logout = async () => {
+    try {
+      await api.post('/logout');
+    } catch {
+      // Ignora falha de rede: o logout local acontece de qualquer forma abaixo.
+    } finally {
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
   };
 
   // Valor que será compartilhado com toda a aplicação

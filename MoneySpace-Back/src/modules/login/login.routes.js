@@ -10,6 +10,7 @@ import {
   login2faController,
   meController,
   refreshController,
+  logoutController,
   iniciar2faController,
   confirmar2faController,
   desativar2faController,
@@ -27,6 +28,9 @@ router.post('/login/2fa', loginLimiter, login2faController);
 // ── Sessão ──────────────────────────────────────────────────────────────────
 router.get('/me', verificaToken, meController);
 router.post('/auth/refresh', refreshLimiter, refreshController);
+// Logout público e idempotente: só limpa os cookies. Não exige token válido,
+// pois o objetivo é encerrar a sessão (inclusive uma já expirada).
+router.post('/logout', logoutController);
 
 // ── 2FA (requer usuário autenticado) ────────────────────────────────────────
 router.post('/2fa/iniciar', verificaToken, twoFactorLimiter, iniciar2faController);

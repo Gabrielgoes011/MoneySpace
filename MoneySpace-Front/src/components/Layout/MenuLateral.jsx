@@ -167,8 +167,8 @@ function MenuLateral() {
                 <Button
                   variant="ghost"
                   className="justify-start text-danger"
-                  onPress={() => {
-                    logout();
+                  onPress={async () => {
+                    await logout();
                     navigate('/login');
                   }}
                 >

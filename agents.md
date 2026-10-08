@@ -106,11 +106,15 @@ só com `/health` que NÃO é usado. Editar sempre o de `modules/`.
 
 Login em uso:
 - Endpoint real `POST /login` (em `src/modules/login/login.routes.js`).
-  Também: `POST /login/2fa`, `GET /me` (protegida), `POST /auth/refresh`.
+  Também: `POST /login/2fa`, `GET /me` (protegida), `POST /auth/refresh`, `POST /logout`.
 - `login.service.js`: valida senha com `bcrypt.compare`, emite JWT.
 - JWT access carrega HOJE: `id, id_familia, familia_nome, nome, email`.
   (PENDENTE incluir `is_master` e `role`.)
 - Token vai em cookie httpOnly E no corpo; front guarda no localStorage.
+- Logout: `POST /logout` (público, idempotente) limpa cookies `token` e `refreshToken`.
+  clearCookie usa os MESMOS atributos do set (refreshToken com `path:'/auth/refresh'`),
+  senão o browser não remove. Front: `AuthContext.logout()` chama o endpoint e sempre
+  limpa o localStorage (resiliente a falha de rede). `api.js` usa `withCredentials:true`.
 
 Papéis (migration 02 aplicada; schema pronto, lógica de autorização PENDENTE):
 - `usuario.is_master` BOOLEAN, GLOBAL = dono do app (super admin); só ele cria famílias.
@@ -131,10 +135,10 @@ policies filtram por esse contexto. Categoria do sistema (`padrao_sistema=true`,
 
 ## ESTADO
 - Fase 1 — Fundação (Autenticação & Segurança).
-- Concluído: 1.1 Login Simples (email+senha), testado ponta a ponta.
+- Concluído: 1.1 Login Simples (email+senha); 1.4 Logout e Contexto de Segurança. Ambos testados.
 - Roles: migration 02 aplicada no Neon; conta do dono = `is_master=true, role='ADMIN'`.
 - PRÓXIMO: ligar `is_master`/`role` no JWT (`login.service.js`) + middlewares `exigirMaster`/`exigirAdmin`.
-  Depois: 1.2 Criar Família + Primeiro Usuário.
+  Depois: 1.2 Criar Família + Primeiro Usuário (e 1.3 MFA no front).
 
 ## LOG
 - 2026-10-08:
@@ -145,6 +149,10 @@ policies filtram por esse contexto. Categoria do sistema (`padrao_sistema=true`,
   - Dívidas zeradas: removida rota órfã `src/routes/login.routes.js`; confirmado que
     `env.development` nunca foi commitado (sem rotação necessária); warning SSL do `pg`
     resolvido em `configDb.js` via `uselibpqcompat=true`.
+  - 1.4 Logout concluída: `POST /logout` no backend limpa cookies httpOnly (validado:
+    Set-Cookie com Expires 1970 nos dois cookies); `AuthContext.logout()` async chama o
+    endpoint + limpa localStorage; `api.js` com `withCredentials:true`; Header e MenuLateral
+    redirecionam p/ `/login` após sair.
 
 ## DÍVIDAS
 - (nenhuma aberta)
