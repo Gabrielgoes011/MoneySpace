@@ -6,11 +6,21 @@
   "description": "MoneySpace - monorepo (backend Express + frontend React/Vite) servido como um único app.",
   "author": "Gabriel Goes",
   "license": "MIT",
+  "main": "MoneySpace-Back/server.js",
   "scripts": {
-    "install:back": "npm --prefix MoneySpace-Back install",
-    "install:front": "npm --prefix MoneySpace-Front install",
-    "install:all": "npm run install:back && npm run install:front",
     "build:front": "npm --prefix MoneySpace-Front run build",
-    "start": "npm --prefix MoneySpace-Back run start"
+    "start": "node MoneySpace-Back/server.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0"
   }
 }

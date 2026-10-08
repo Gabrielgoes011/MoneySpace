@@ -73,7 +73,6 @@ MAIN=MoneySpace-Back/server.js
 RAM=800
 VERSION=latest
 AUTORESTART=true
-BUILD=npm --prefix MoneySpace-Back install --omit=dev
 START=node MoneySpace-Back/server.js
 ```
 
@@ -81,6 +80,23 @@ START=node MoneySpace-Back/server.js
 - `RAM=800`: com 2 GB no total, sobram 1200 MB para outros apps. Em produção este app
   é leve (só serve estático + API); dá para baixar para `RAM=512` se quiser liberar
   mais espaço para um segundo app.
+- **Sem `BUILD` custom:** a Discloud roda `npm install` na raiz automaticamente, o que
+  instala as dependências do backend (declaradas no `package.json` da RAIZ — ver abaixo).
+
+## Onde ficam as dependências do backend (importante)
+
+As dependências de runtime do backend (`express`, `pg`, `dotenv`, `jsonwebtoken`,
+`bcrypt`, etc.) estão declaradas no **`package.json` da RAIZ**, não só no do back.
+
+Motivo: a Discloud instala apenas o `package.json` da raiz automaticamente. Como o
+`node_modules` fica na raiz e o Node sobe a árvore de diretórios procurando pacotes,
+o `MoneySpace-Back/server.js` resolve tudo a partir da raiz. Se as deps ficassem só em
+`MoneySpace-Back/package.json`, o servidor subiria sem `node_modules` e quebraria com
+`Cannot find package 'dotenv'`.
+
+> **Ao adicionar uma dependência nova de runtime do backend, declare-a TAMBÉM no
+> `package.json` da raiz.** O `MoneySpace-Back/package.json` continua existindo para o
+> dev local (`cd MoneySpace-Back && npm run dev`), mas o deploy usa a raiz.
 
 ## Testar localmente em localhost:8080 (igual produção)
 
