@@ -59,7 +59,17 @@ CREATE TABLE familia (
 -- usuario: pessoas que logam no app (marido, esposa...). Pertencem a 1 família.
 --   `senha_hash`  -> nunca a senha pura; sempre o hash (ex: bcrypt).
 --   `mfa_secreto` -> segredo TOTP (Google Authenticator). `mfa_ativo` liga o 2FA.
---   Ex: { nome: 'Carlos', email: 'carlos@email.com', mfa_ativo: true }
+--
+--   CONTROLE DE ACESSO (duas dimensões):
+--     `is_master` (GLOBAL) -> dono do APP inteiro (super admin), acima das
+--        famílias. Só ele cria novas famílias/tenants. Pensado para o SaaS.
+--     `role` (POR FAMÍLIA) -> papel dentro da própria família:
+--        'ADMIN'  = responsável (cria contas, gerencia membros da família).
+--        'MEMBRO' = usuário comum (esposa, filho).
+--     Obs.: promover/rebaixar (mexer em role/is_master) é operação sensível e
+--           deve ser autorizada na camada de aplicação (ver backend).
+--   Ex: { nome: 'Carlos', email: 'carlos@email.com', mfa_ativo: true,
+--         is_master: true, role: 'ADMIN' }
 -- ----------------------------------------------------------------------------
 CREATE TABLE usuario (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -70,7 +80,12 @@ CREATE TABLE usuario (
     senha VARCHAR(255) NOT NULL,               -- hash da senha, nunca o texto puro
     mfa_secreto VARCHAR(100),                   -- segredo TOTP (opcional)
     mfa_ativo BOOLEAN DEFAULT false,            -- 2FA ligado?
-    dt_cadastro TIMESTAMP DEFAULT NOW()
+
+    is_master BOOLEAN NOT NULL DEFAULT false,   -- dono do APP (global, super admin)
+    role VARCHAR(20) NOT NULL DEFAULT 'MEMBRO', -- papel na família: 'ADMIN' | 'MEMBRO'
+
+    dt_cadastro TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT chk_usuario_role CHECK (role IN ('ADMIN', 'MEMBRO'))
 );
 
 -- ----------------------------------------------------------------------------
@@ -280,6 +295,8 @@ CREATE TABLE transferencia (
 -- datas usadas nos relatórios. Isso acelera as queries do dia a dia.
 -- ============================================================================
 CREATE INDEX idx_usuario_familia   ON usuario(id_familia);
+-- Índice parcial: há pouquíssimos masters (idealmente 1). Acelera "quem é master?".
+CREATE INDEX idx_usuario_master    ON usuario(is_master) WHERE is_master = true;
 CREATE INDEX idx_conta_familia     ON conta(id_familia);
 CREATE INDEX idx_categoria_familia ON categoria(id_familia);
 CREATE INDEX idx_contato_familia   ON contato(id_familia);

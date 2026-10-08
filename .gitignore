@@ -25,6 +25,7 @@ build/
 # Variáveis de ambiente (NUNCA versionar segredos)
 .env
 .env.*
+.env.development
 !.env.example
 
 # Escopo / documentos internos do projeto

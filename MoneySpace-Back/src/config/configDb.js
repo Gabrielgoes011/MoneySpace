@@ -19,11 +19,18 @@ function normalizeDatabaseUrl(rawUrl) {
     try {
         const parsed = new URL(rawUrl);
         const sslmode = parsed.searchParams.get('sslmode');
-        const useLibpqCompat = parsed.searchParams.get('uselibpqcompat') === 'true';
 
-        // Evita o warning do pg atual mantendo o comportamento seguro já adotado.
-        if (!useLibpqCompat && ['prefer', 'require', 'verify-ca'].includes(sslmode)) {
-            parsed.searchParams.set('sslmode', 'verify-full');
+        // O `pg` atual emite um SECURITY WARNING porque trata 'prefer'/'require'/
+        // 'verify-ca' como aliases de 'verify-full'. Em versões futuras esse
+        // comportamento muda. A forma recomendada pela própria lib para manter o
+        // comportamento seguro atual e silenciar o aviso é optar explicitamente
+        // pela compatibilidade com libpq. Fazemos isso quando o sslmode é um dos
+        // modos afetados e o opt-in ainda não foi informado na URL.
+        const modosAfetados = ['prefer', 'require', 'verify-ca'];
+        const jaOptou = parsed.searchParams.get('uselibpqcompat') === 'true';
+
+        if (!jaOptou && modosAfetados.includes(sslmode)) {
+            parsed.searchParams.set('uselibpqcompat', 'true');
         }
 
         return parsed.toString();

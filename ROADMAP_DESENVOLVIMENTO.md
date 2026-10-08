@@ -16,12 +16,12 @@
 **Dependência:** Nenhuma (é o começo)  
 **Tempo estimado:** ~1-2 semanas
 
-### 1.1 Login Simples (Email + Senha) 🔴
-- Tela de login no front
-- Validação email/senha no backend
-- JWT gerado e armazenado
-- Sessão persistida no localStorage
-- **Saída:** Um usuário consegue fazer login
+### 1.1 Login Simples (Email + Senha) 🔴 ✅ CONCLUÍDA
+- [x] Tela de login no front
+- [x] Validação email/senha no backend
+- [x] JWT gerado e armazenado
+- [x] Sessão persistida no localStorage
+- **Saída:** Um usuário consegue fazer login ✅
 
 ### 1.2 Criar Família + Primeiro Usuário 🔴
 - Tela de cadastro (nome, email, senha, cpf)
@@ -323,4 +323,6 @@ Depois, com mais tempo:
 ## 🔗 Próximos Passos
 - [ ] Confirmar a ordem com o time
 - [ ] Estimar timebox por feature
-- [ ] Iniciar Fase 1 (Login)
+- [x] Iniciar Fase 1 (Login)
+- [x] 1.1 Login Simples (Email + Senha)
+- [ ] 1.2 Criar Família + Primeiro Usuário
