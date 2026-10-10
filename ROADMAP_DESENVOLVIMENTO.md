@@ -48,15 +48,16 @@
 **Dependência:** Fase 1 (precisa estar logado)  
 **Tempo estimado:** ~1-2 semanas
 
-### 2.1 Cadastrar Contas (Corrente, Carteira, Cartão) 🔴 🚧 EM ANDAMENTO
+### 2.1 Cadastrar Contas (Corrente, Carteira, Cartão) 🔴 ✅ CONCLUÍDA
 - [x] Tela "Minhas Contas" (front) — cards + modal de criar/editar
 - [x] Criar conta corrente (saldo_inicial) — form (front)
 - [x] Criar carteira (dinheiro vivo) — form (front)
 - [x] Criar cartão de crédito (limite, dias de fechamento/vencimento) — form (front)
 - [x] Editar conta — modal reaproveitado (front)
-- [ ] Backend: implementar funções de `src/modules/conta/` (Gabriel) — hoje é só esqueleto
-- **Saída:** Dashboard mostra suas contas com saldos
-- Obs.: front consome `GET/POST/PUT/DELETE /contas`; com backend em dev, cai em mock + toast.
+- [x] Backend: módulo `src/modules/conta/` implementado e testado (CRUD + RLS por rota)
+- [x] Front consome a API real (sem mock) em `services/contaService.js`
+- **Saída:** contas criadas/editadas/listadas de verdade pela família logada ✅
+- Obs.: validado via HTTP (criar/listar/atualizar/arquivar + validação de tipo).
 
 ### 2.2 Visualizar Saldos Totais 🔴
 - Dashboard principal
@@ -64,10 +65,11 @@
 - Limite disponível no cartão
 - **Saída:** Um "resumão" do seu dinheiro na tela principal
 
-### 2.3 Arquivar Contas (Soft Delete) 🟡
-- Botão "arquivar" em vez de deletar
-- Conta desaparece da lista mas histórico fica
-- **Saída:** Controle limpo de contas antigas
+### 2.3 Arquivar Contas (Soft Delete) 🟡 ✅ CONCLUÍDA
+- [x] Botão "arquivar" em vez de deletar (front, com confirmação)
+- [x] `DELETE /contas/:id` -> `UPDATE conta SET ativo = false` (backend)
+- [x] Conta some da lista (listagem filtra `ativo = true`) mas histórico fica
+- **Saída:** Controle limpo de contas antigas ✅
 
 ---
 

@@ -9,19 +9,17 @@
 // cai nos mocks e avisa por toast — a tela segue navegável.
 
 import { useEffect, useState } from 'react';
-import { Card, Chip, Button, Meter, toast } from '@heroui/react';
-import { FiCreditCard, FiDollarSign, FiPocket, FiPlus, FiEdit2 } from 'react-icons/fi';
+import { Card, Chip, Button, toast } from '@heroui/react';
+import { FiCreditCard, FiDollarSign, FiPocket, FiPlus, FiEdit2, FiArchive } from 'react-icons/fi';
 import { usePrivacy } from '../../context/PrivacyContext';
 import { formatarDinheiroPrivado } from '../../utils/format';
 import {
   listarContas,
   criarConta,
   atualizarConta,
+  arquivarConta,
 } from '../../services/contaService';
 import ContaFormModal from './ContaFormModal';
-
-// Uso fictício do limite por cartão (viria do SUM das compras no crédito).
-const usoLimite = { c1: 1850, c4: 3200 };
 
 const rotuloTipo = {
   CREDITO: 'Cartão de crédito',
@@ -49,9 +47,15 @@ function Contas() {
   useEffect(() => {
     (async () => {
       setCarregando(true);
-      const lista = await listarContas();
-      setContas(lista);
-      setCarregando(false);
+      try {
+        const lista = await listarContas();
+        setContas(lista);
+      } catch {
+        toast.danger('Não foi possível carregar as contas.');
+        setContas([]);
+      } finally {
+        setCarregando(false);
+      }
     })();
   }, []);
 
@@ -83,10 +87,26 @@ function Contas() {
         toast.success('Conta criada.');
       }
       setModalAberto(false);
-    } catch {
-      toast.danger('Não foi possível salvar a conta.');
+    } catch (erro) {
+      toast.danger(erro.response?.data?.message || 'Não foi possível salvar a conta.');
     } finally {
       setSalvando(false);
+    }
+  };
+
+  // Arquiva a conta (soft delete) após confirmação simples.
+  const arquivar = async (conta) => {
+    const ok = window.confirm(
+      `Arquivar "${conta.nome}"? O histórico é preservado, mas a conta deixa de aparecer na lista.`
+    );
+    if (!ok) return;
+
+    try {
+      await arquivarConta(conta.id);
+      setContas((lista) => lista.filter((c) => c.id !== conta.id));
+      toast.success('Conta arquivada.');
+    } catch (erro) {
+      toast.danger(erro.response?.data?.message || 'Não foi possível arquivar a conta.');
     }
   };
 
@@ -135,9 +155,6 @@ function Contas() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {contas.map((conta) => {
             const ehCredito = conta.tipo === 'CREDITO';
-            const usado = usoLimite[conta.id] || 0;
-            const percentual =
-              ehCredito && conta.limite ? Math.round((usado / conta.limite) * 100) : 0;
 
             return (
               <Card key={conta.id}>
@@ -174,27 +191,26 @@ function Contas() {
                       >
                         <FiEdit2 size={16} />
                       </Button>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Arquivar ${conta.nome}`}
+                        onPress={() => arquivar(conta)}
+                      >
+                        <FiArchive size={16} />
+                      </Button>
                     </div>
                   </div>
 
                   {ehCredito ? (
                     <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-foreground-500">
-                        <span>Fatura atual</span>
-                        <span>
-                          {formatarDinheiroPrivado(usado, valoresOcultos)} de{' '}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-foreground-500">Limite</span>
+                        <span className="font-semibold">
                           {formatarDinheiroPrivado(conta.limite, valoresOcultos)}
                         </span>
                       </div>
-                      <Meter
-                        value={percentual}
-                        color={percentual > 80 ? 'danger' : 'accent'}
-                        aria-label={`Uso do limite do ${conta.nome}`}
-                      >
-                        <Meter.Track>
-                          <Meter.Fill />
-                        </Meter.Track>
-                      </Meter>
                       <p className="text-xs text-foreground-500">
                         Fecha dia {conta.dia_fechamento} · vence dia {conta.dia_vencimento}
                       </p>

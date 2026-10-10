@@ -12,6 +12,7 @@
 
 import { Router } from 'express';
 import verificaToken from '../../middleware/auth/verificaToken.js';
+import { rlsMiddleware } from '../../middleware/rlsMiddleware.js';
 import {
   listarContasController,
   criarContaController,
@@ -21,9 +22,12 @@ import {
 
 const router = Router();
 
-router.get('/contas', verificaToken, listarContasController);
-router.post('/contas', verificaToken, criarContaController);
-router.put('/contas/:id', verificaToken, atualizarContaController);
-router.delete('/contas/:id', verificaToken, arquivarContaController);
+// Ordem: valida o token (define req.user) -> abre a transação RLS (usa
+// req.user.id_familia e anexa req.db) -> controller. O rlsMiddleware precisa
+// vir DEPOIS do verificaToken, senão req.user ainda não existe.
+router.get('/contas', verificaToken, rlsMiddleware, listarContasController);
+router.post('/contas', verificaToken, rlsMiddleware, criarContaController);
+router.put('/contas/:id', verificaToken, rlsMiddleware, atualizarContaController);
+router.delete('/contas/:id', verificaToken, rlsMiddleware, arquivarContaController);
 
 export default router;

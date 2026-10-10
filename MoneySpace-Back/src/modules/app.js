@@ -11,11 +11,14 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import fs from 'fs';
 
+//importa as rotas de cada módulo (cada módulo exporta um Router)
 import healthRoutes from '../routes/health.routes.js';
 import loginRoutes from './login/login.routes.js';
 import contaRoutes from './conta/conta.routes.js';
+import familiaRoutes from './cadastros/familia/cadFamilia.routes.js';
+
+
 import httpResponse from '../utils/httpResponse.js';
-import { rlsMiddleware } from '../middleware/rlsMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -50,15 +53,16 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // ── RLS (Row-Level Security) ─────────────────────────────────────────────────
-// Abre transação + contexto por request quando há usuário autenticado.
-// Em rotas públicas (sem req.user) ele apenas passa direto.
-app.use(rlsMiddleware);
+// NÃO é global: o RLS depende de req.user (definido pelo verificaToken), então
+// é aplicado POR ROTA, depois do verificaToken (ver conta.routes.js). Aplicar
+// aqui globalmente rodaria antes do token e não teria req.user.
 
 // ── Rotas da API ────────────────────────────────────────────────────────────
 // Tudo sob /api para não conflitar com o front servido na raiz (/).
 app.use('/api/health', healthRoutes);
 app.use('/api', loginRoutes);
 app.use('/api', contaRoutes);
+app.use('/api', familiaRoutes);
 
 // Ping da API (confirma que o backend respondeu).
 app.get('/api', (req, res) =>

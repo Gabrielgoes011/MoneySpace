@@ -14,6 +14,7 @@ import {
   Select,
   ListBox,
   NumberField,
+  Label,
 } from '@heroui/react';
 import { FiCreditCard, FiDollarSign, FiPocket } from 'react-icons/fi';
 
@@ -73,9 +74,9 @@ function ContaFormModal({ aberto, aoFechar, aoSalvar, conta, salvando }) {
   };
 
   return (
-    <Modal isOpen={aberto} onOpenChange={(v) => !v && aoFechar()}>
-      <Modal.Backdrop>
-        <Modal.Content>
+    <Modal>
+      <Modal.Backdrop isOpen={aberto} onOpenChange={(v) => !v && aoFechar()}>
+        <Modal.Container>
           <Modal.Dialog>
             <Modal.CloseTrigger />
 
@@ -164,7 +165,7 @@ function ContaFormModal({ aberto, aoFechar, aoSalvar, conta, salvando }) {
                       formatOptions={{ style: 'currency', currency: 'BRL' }}
                       aria-label="Limite do cartão"
                     >
-                      <NumberField.Label>Limite</NumberField.Label>
+                      <Label>Limite</Label>
                       <NumberField.Group>
                         <NumberField.Input />
                       </NumberField.Group>
@@ -178,7 +179,7 @@ function ContaFormModal({ aberto, aoFechar, aoSalvar, conta, salvando }) {
                         maxValue={31}
                         aria-label="Dia de fechamento"
                       >
-                        <NumberField.Label>Dia de fechamento</NumberField.Label>
+                        <Label>Dia de fechamento</Label>
                         <NumberField.Group>
                           <NumberField.Input />
                         </NumberField.Group>
@@ -191,7 +192,7 @@ function ContaFormModal({ aberto, aoFechar, aoSalvar, conta, salvando }) {
                         maxValue={31}
                         aria-label="Dia de vencimento"
                       >
-                        <NumberField.Label>Dia de vencimento</NumberField.Label>
+                        <Label>Dia de vencimento</Label>
                         <NumberField.Group>
                           <NumberField.Input />
                         </NumberField.Group>
@@ -206,7 +207,7 @@ function ContaFormModal({ aberto, aoFechar, aoSalvar, conta, salvando }) {
                     aria-label="Saldo atual"
                   >
                     {/* Rótulo evita confundir: é o saldo de HOJE, não uma receita */}
-                    <NumberField.Label>Saldo atual nesta conta hoje</NumberField.Label>
+                    <Label>Saldo atual nesta conta hoje</Label>
                     <NumberField.Group>
                       <NumberField.Input />
                     </NumberField.Group>
@@ -224,7 +225,7 @@ function ContaFormModal({ aberto, aoFechar, aoSalvar, conta, salvando }) {
               </Modal.Footer>
             </form>
           </Modal.Dialog>
-        </Modal.Content>
+        </Modal.Container>
       </Modal.Backdrop>
     </Modal>
   );

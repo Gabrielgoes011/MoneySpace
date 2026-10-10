@@ -94,9 +94,12 @@ MoneySpace-Back/
   src/config/configDb.js        Pool pg + openDb() + contexto RLS (AsyncLocalStorage)
   src/middleware/auth/verificaToken.js   valida JWT (Bearer ou cookie 'token') -> req.user
   src/middleware/rateLimiter.js          loginLimiter, twoFactorLimiter, refreshLimiter
-  src/middleware/rlsMiddleware.js        transação + SET app.current_familia_id por request
-  src/modules/app.js            APP EXPRESS EM USO (CORS, parsers, RLS, rotas)
+  src/middleware/rlsMiddleware.js        transação + SET app.current_familia_id; anexa req.db.
+                                         Usar POR ROTA depois do verificaToken (não é global)
+  src/modules/app.js            APP EXPRESS EM USO (CORS, parsers, rotas; RLS é por rota)
   src/modules/login/            login/2FA (controller, service, repositories, routes)
+  src/modules/conta/            CRUD de contas (IMPLEMENTADO: controller/service/repo/routes)
+  src/modules/cadastros/familia/ família (ESQUELETO: criar ok; listar/atualizar pendentes)
   src/routes/health.routes.js   health check
   src/utils/httpResponse.js     respostas padronizadas
   src/utils/pgErrorHandler.js   tradutor de erro do Postgres
@@ -140,6 +143,20 @@ RLS: `rlsMiddleware` abre transação por request e seta `app.current_familia_id
 policies filtram por esse contexto. Categoria do sistema (`padrao_sistema=true`, `id_familia=NULL`)
 é visível a todos e editável por ninguém.
 
+### PADRÃO RLS por rota (OBRIGATÓRIO em rotas que tocam o banco por família)
+Decisão fechada ao implementar 2.1 (ver LOG 2026-10-10). Siga EXATAMENTE isto:
+- O `rlsMiddleware` NÃO é global no `app.js`. Ele depende de `req.user`, que só existe
+  DEPOIS do `verificaToken`. Aplicar por rota, nesta ordem:
+  `router.get('/x', verificaToken, rlsMiddleware, controller)`.
+- O middleware anexa a transação em `req.db`. NÃO confie no `AsyncLocalStorage`/`openDb()`
+  para pegar o contexto (a propagação quebra no pipeline async do Express).
+- PASSE `req.db` explicitamente pela cadeia: controller -> service(db, ...) -> repo(db, ...).
+  Toda query usa esse `db` (o client da transação), senão o contexto RLS fica vazio.
+- No INSERT, preencha a coluna da família com
+  `current_setting('app.current_familia_id', true)::uuid` (o `true` = missing_ok;
+  sem ele o Postgres lança `unrecognized configuration parameter`).
+- Referência pronta: `src/modules/conta/` (routes + controller + service + repositories).
+
 ## COMANDOS
 - Backend (porta 3000): `cd MoneySpace-Back && npm run dev` (= `node --watch server.js`).
 - Frontend dev: `cd MoneySpace-Front && npm run dev`.
@@ -147,13 +164,16 @@ policies filtram por esse contexto. Categoria do sistema (`padrao_sistema=true`,
 
 ## ESTADO
 - Fase 1 concluída em parte: 1.1 Login e 1.4 Logout (testados).
-- Fase 2 iniciada: 2.1 Contas — FRONTEND pronto; BACKEND só esqueleto (Gabriel implementa).
+- Fase 2: 2.1 Contas e 2.3 Arquivar CONCLUÍDAS (front + BACKEND implementado e testado
+  ponta a ponta). EXCEÇÃO ao acordo: a pedido explícito do Gabriel, a IA implementou o
+  backend do módulo `conta` (não ficou só esqueleto). Validado via HTTP: criar CARTEIRA/
+  CREDITO (201), listar (200), atualizar (200), arquivar (200), tipo inválido (400).
 - Roles: migration 02 aplicada no Neon; conta do dono = `is_master=true, role='ADMIN'`.
 - PENDÊNCIAS BACKEND (Gabriel):
-  - Implementar funções do módulo `src/modules/conta/` (controller/service/repositories).
   - Ligar `is_master`/`role` no JWT (`login.service.js`) + middlewares `exigirMaster`/`exigirAdmin`.
-- PRÓXIMO (front): 1.2 Criar Família + Primeiro Usuário; 1.3 MFA no front.
-- Contrato da API de contas (já consumido pelo front em `services/contaService.js`):
+  - Módulo `cadastros/familia/` ainda é esqueleto (listar/atualizar com `// implementar`).
+- PRÓXIMO: 2.2 Visualizar saldos totais no Dashboard; 1.2 Criar Família + 1º Usuário; 1.3 MFA no front.
+- Contrato da API de contas (consumido pelo front em `services/contaService.js`, SEM mock):
   GET `/contas` -> `{data:{contas:[...]}}`; POST `/contas`; PUT `/contas/:id`; DELETE `/contas/:id`.
 
 ## LOG
@@ -175,6 +195,24 @@ policies filtram por esse contexto. Categoria do sistema (`padrao_sistema=true`,
     Backend `src/modules/conta/` criado só como ESQUELETO (Gabriel implementa); rotas já
     registradas em `modules/app.js`. Build do front OK. Nota: `react-icons/fi` NÃO tem
     `FiWallet` -> usar `FiPocket` p/ carteira.
+- 2026-10-10:
+  - 2.1/2.3 Contas CONCLUÍDAS (back + front), a pedido do Gabriel (IA implementou o back).
+  - Backend `src/modules/conta/` implementado: repository (SQL real), service (validação
+    por tipo: dias 1-31, limite>=0, saldo p/ CORRENTE/CARTEIRA), controller (4 endpoints,
+    `usuario_cadastro` = `req.user.nome`, erro de negócio=400 e Postgres via pgErrorHandler).
+  - BUG RLS corrigido (ver convenção "PADRÃO RLS por rota"): `rlsMiddleware` era global e
+    rodava ANTES do `verificaToken` -> `req.user` indefinido -> `app.current_familia_id`
+    vazio -> `id_familia` NULL no INSERT. Correções: (a) RLS por rota, DEPOIS do
+    verificaToken, em `conta.routes.js`; (b) `req.db` passado pela cadeia controller->
+    service->repo; (c) INSERT usa `current_setting('app.current_familia_id', true)`;
+    (d) removido `app.use(rlsMiddleware)` global do `app.js`.
+  - Front de contas migrado p/ API real: removidos fallbacks de mock do `contaService.js`;
+    adicionado botão Arquivar (DELETE) com confirmação; removido `usoLimite` mock da tela
+    (cartão mostra "Limite" + dias). Build OK.
+  - Proxy do Vite corrigido: `vite.config.js` apontava p/ `:8080`, backend roda em `:3000`
+    (causava ECONNREFUSED no `/api/login`). Ajustado p/ `http://localhost:3000`.
+  - Operacional: senha do usuário `gabrielgoes20@gmail.com` foi redefinida p/ `123456`
+    durante os testes (avisar/trocar se necessário).
 
 ## DÍVIDAS
 - (nenhuma aberta)

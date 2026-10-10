@@ -10,11 +10,12 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
-    // Em dev, encaminha as chamadas /api para o backend (porta 8080),
-    // assim o front usa o mesmo caminho relativo que em produção.
+    // Em dev, encaminha as chamadas /api para o backend (porta 3000, igual ao
+    // PORT do .env.development), assim o front usa o mesmo caminho relativo
+    // que em produção.
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:3000',
         changeOrigin: true,
       },
     },
