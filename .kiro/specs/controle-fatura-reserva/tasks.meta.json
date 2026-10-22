@@ -1,0 +1,413 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1. Fechar decisões de contrato com o usuário e registrar no design": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682008998
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682020254
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792683481049
+      }
+    ],
+    "2. Criar a fundação de migrations": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009082
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792683536631
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792683606272
+      }
+    ],
+    "3. Escrever `migration-03-controle-fatura.sql`": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009162
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792683611220
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792684248806
+      }
+    ],
+    "4. Aplicar a migration em banco descartável e validar": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009241
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792684254055
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685242766
+      }
+    ],
+    "5. Atualizar `db/script.sql` como fonte da verdade": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009328
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685247757
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685362361
+      }
+    ],
+    "6. [BACK-ESQUELETO] Criar `src/modules/fatura/` com assinaturas": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009432
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685371351
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685604591
+      }
+    ],
+    "7. [BACK-ESQUELETO] Definir o contrato de todos os endpoints": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009509
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685612692
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685770830
+      }
+    ],
+    "8. [BACK-ESQUELETO] Esqueleto do middleware de upload (multer em memória)": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009585
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685775407
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685873764
+      }
+    ],
+    "9. [BACK-ESQUELETO] Criar `importadores/rico.parser.js` com assinaturas": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009661
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792685878302
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792686003545
+      }
+    ],
+    "10. [BACK-ESQUELETO] Esqueleto do fluxo de preview e persistência": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009731
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792686007783
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792686105862
+      }
+    ],
+    "11. [FRONT] Criar serviço `src/services/faturaService.js`": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009804
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792686110459
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792689620742
+      }
+    ],
+    "12. [FRONT] Criar rota `/faturas` e item de navegação": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009874
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792689625295
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792690513599
+      }
+    ],
+    "13. [FRONT] Página `Faturas.jsx` com seletor de cartão/competência": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682009947
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792690518412
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792690701080
+      }
+    ],
+    "14. [FRONT] `FaturaResumo.jsx` (KPIs)": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010020
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792690705883
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792690816677
+      }
+    ],
+    "15. [FRONT] `ReservaCard.jsx` (conferência)": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010091
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792690821422
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792690987055
+      }
+    ],
+    "16. [FRONT] `ImportarFaturaModal.jsx`": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010162
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792690991595
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691306528
+      }
+    ],
+    "17. [FRONT] `FaturaTransacoesTable.jsx`": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010234
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691311461
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691565452
+      }
+    ],
+    "18. [FRONT] `AnalisePortador.jsx` e `AnaliseCategoria.jsx`": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010306
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691570411
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691698771
+      }
+    ],
+    "19. [BACK-ESQUELETO] Esqueleto do fechamento": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010379
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691703665
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691797361
+      }
+    ],
+    "20. [FRONT] Ação de fechar fatura na UI": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010454
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691802014
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691948955
+      }
+    ],
+    "21. [FRONT] Validar build do frontend": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010567
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792691953648
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792692399436
+      }
+    ],
+    "22. Smoke tests de backend (com Gabriel) e isolamento de tenant": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010642
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792692405483
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792692859941
+      }
+    ],
+    "23. Limpeza de legado não destrutiva (com confirmação)": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010728
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792692865261
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792692952808
+      }
+    ],
+    "24. Atualizar documentação do projeto": [
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792682010798
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792692957804
+      },
+      {
+        "executionId": "801137db-20ee-4140-a788-e436f182e2c0",
+        "chatSessionId": "sess_2e293002-4912-4830-bf30-17f8996e5de0",
+        "timestamp": 1792693163797
+      }
+    ]
+  }
+}

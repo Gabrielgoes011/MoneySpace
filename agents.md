@@ -1,4 +1,4 @@
-# AGENTS.md — Documento de trabalho da IA (MoneySpace)
+﻿# AGENTS.md — Documento de trabalho da IA (MoneySpace)
 
 Não é documento de marketing. É contexto técnico denso para a IA ler no início de
 cada sessão, entender o projeto e codar no padrão sem revasculhar tudo.
@@ -83,6 +83,22 @@ Erro de regra de negócio = `throw new Error('msg')` no service, usa a própria 
 - Feedback via `toast` do HeroUI (`toast.promise`, `toast.success`...).
 - Páginas: `src/pages/<Nome>/<Nome>.jsx`.
 
+## DECISÕES (domínio de fatura — spec controle-fatura-reserva)
+- Domínio GENÉRICO: cartão -> fatura -> lançamento -> importação. Rico é só o 1º importador
+  (parser plugável via `importadores/index.js`, seleção por emissor).
+- Cartão = conta tipo `CREDITO` (NÃO existe tabela `cartoes`). Portador = `usuario` da família
+  (a importação preserva o nome importado).
+- `status_liquidacao` é CAMPO ÚNICO em texto simples (minúsculas, sem `_`):
+  `pendente` | `na hora` | `no fechamento` | `nao aplicavel`. NÃO são duas colunas.
+  As opções vêm da tabela GLOBAL `utilitario` (`tipo='status'`), SEM RLS — padrão do sistema,
+  como as categorias de sistema (visível a todos, editável por ninguém).
+- Importação: preview NÃO persiste; a confirmação persiste em transação ÚNICA.
+  Idempotência por `sha256` do arquivo (`uq_importacao_hash` -> 409) e `fingerprint` por linha
+  (`uq_transacao_fingerprint`). Regra pagamento/estorno: valor negativo OU
+  `estabelecimento == 'Pagamento de fatura'` (IGUALDADE exata, não substring).
+- Migrations são aplicadas MANUALMENTE no SQL Editor do Neon (sem ferramenta automatizada);
+  validar com `db/migrations/validate-migration-03.(sql|mjs)`. `db/script.sql` = fonte da verdade.
+
 ## ESTRUTURA
 
 ```
@@ -90,15 +106,23 @@ MoneySpace-Back/
   server.js                     entrypoint: carrega env, sobe Express na PORT
   db/script.sql                 schema completo (fonte da verdade)
   db/migrations/                migrations numeradas
+  db/migrations/migration-03-controle-fatura.sql   fatura/fatura_importacao/fatura_transacao + utilitario
+  db/migrations/validate-migration-03.(sql|mjs)    validação da migration 03 (PGlite)
+  db/migrations/README.md       como aplicar migrations MANUALMENTE no SQL Editor do Neon
+  db/smoke-fatura.(http|mjs|md) smoke test do backend de fatura (aguarda implementação do back)
+  db/smoke-fatura-exemplo-rico.csv   CSV de exemplo p/ smoke test de importação
   src/config/env.js             carrega .env.{NODE_ENV}; importar ANTES de usar process.env
   src/config/configDb.js        Pool pg + openDb() + contexto RLS (AsyncLocalStorage)
   src/middleware/auth/verificaToken.js   valida JWT (Bearer ou cookie 'token') -> req.user
   src/middleware/rateLimiter.js          loginLimiter, twoFactorLimiter, refreshLimiter
   src/middleware/rlsMiddleware.js        transação + SET app.current_familia_id; anexa req.db.
                                          Usar POR ROTA depois do verificaToken (não é global)
+  src/middleware/upload.js      multer em memória p/ CSV (IMPLEMENTADO; uploadCsvSingle trata erro->400)
   src/modules/app.js            APP EXPRESS EM USO (CORS, parsers, rotas; RLS é por rota)
   src/modules/login/            login/2FA (controller, service, repositories, routes)
   src/modules/conta/            CRUD de contas (IMPLEMENTADO: controller/service/repo/routes)
+  src/modules/fatura/           Fatura & Reserva (IMPLEMENTADO: controller/service/repo/routes +
+                                importadores/rico.parser.js + importadores/index.js)
   src/modules/cadastros/familia/ família (ESQUELETO: criar ok; listar/atualizar pendentes)
   src/routes/health.routes.js   health check
   src/utils/httpResponse.js     respostas padronizadas
@@ -108,14 +132,18 @@ MoneySpace-Back/
 MoneySpace-Front/
   src/App.jsx                   rotas + providers; protege rotas por isAuthenticated
   src/services/api.js           axios central
+  src/services/faturaService.js consumo da API de fatura (sem mock)
   src/context/                  AuthContext, ThemeContext, PrivacyContext
   src/hooks/useIsMobile.js
   src/components/Layout/        Header, Sidebar, BottomNavMobile, MenuLateral, Layout
-  src/pages/                    Login, Dashboard, Transacoes, Contas, Categorias, Usuarios
+  src/pages/                    Login, Dashboard, Transacoes, Contas, Categorias, Usuarios, Faturas
+  src/pages/Faturas/            Faturas.jsx (seletor cartão/competência) + componentes/:
+                                FaturaResumo, ReservaCard, ImportarFaturaModal,
+                                FaturaTransacoesTable, AnalisePortador, AnaliseCategoria
 ```
 
-ARMADILHA: `server.js` usa `src/modules/app.js` (completo). Existe `src/app.js` legado
-só com `/health` que NÃO é usado. Editar sempre o de `modules/`.
+ARMADILHA: `server.js` usa `src/modules/app.js` (completo). O `src/app.js` legado
+(só com `/health`, não usado) FOI REMOVIDO (reversível via git). Editar sempre o de `modules/`.
 
 ## AUTH & AUTORIZAÇÃO
 
@@ -163,16 +191,44 @@ Decisão fechada ao implementar 2.1 (ver LOG 2026-10-10). Siga EXATAMENTE isto:
 - Frontend build (valida produção): `cd MoneySpace-Front && npm run build`.
 
 ## ESTADO
+
+### Foco atual: módulo "Controle de Fatura & Conferência da Reserva" (spec controle-fatura-reserva)
+Domínio genérico cartão -> fatura -> lançamento -> importação; Rico é o 1º importador.
+- Banco: `migration-03-controle-fatura.sql` ESCRITA e VALIDADA (27/27 em PGlite: constraints,
+  uniques, RLS, conversão `NUMERIC`). `script.sql` ATUALIZADO (fonte da verdade) com
+  `fatura` / `fatura_importacao` / `fatura_transacao` (com RLS) + `utilitario` (GLOBAL, seed de
+  status, sem RLS). Decisão de schema: `status_liquidacao` é CAMPO ÚNICO em texto simples
+  (`pendente`/`na hora`/`no fechamento`/`nao aplicavel`), NÃO duas colunas (ver DECISÕES).
+- Backend: `src/modules/fatura/` IMPLEMENTADO (repository SQL real; service com cálculos/
+  idempotência por hash/fingerprint/fechamento; controller com httpResponse+pgErrorHandler; routes
+  com RLS por rota + `uploadCsvSingle`). `importadores/rico.parser.js` + `importadores/index.js`
+  implementados. `multer` já estava no package.json e instalado. EXCEÇÃO ao acordo: a pedido do
+  Gabriel, a IA implementou o backend (igual ao módulo `conta`). Validado: parser (3 linhas do
+  CSV exemplo) + 16 testes de lógica do service (db mockado). Contrato de API no design.md.
+- Frontend: IMPLEMENTADO COMPLETO pela IA — `services/faturaService.js` (sem mock), rota
+  `/faturas` + navegação (`Sidebar`/`BottomNavMobile`), `pages/Faturas/Faturas.jsx` (seletor
+  cartão/competência) + componentes `FaturaResumo`, `ReservaCard`, `ImportarFaturaModal`,
+  `FaturaTransacoesTable`, `AnalisePortador`, `AnaliseCategoria`. Build do front OK.
+  Edição/importação BLOQUEADAS quando a fatura está `FECHADA`/`PAGA`.
+- Legado: `src/app.js` legado REMOVIDO (reversível via git); `src/modules/app.js` é o app em uso.
+- PENDÊNCIAS do módulo fatura (operacional, com o Gabriel):
+  - Aplicar `migration-03` no Neon (SQL Editor) — a IA não tem acesso ao banco.
+  - Rodar o smoke test (`db/smoke-fatura.*`) + checklist manual do design.md contra o Neon dev.
+- PRÓXIMO: aplicar `migration-03` no Neon + rodar smoke/manual ponta a ponta; seguir p/ 2.2
+  (saldos no Dashboard) e 1.2 (criar família + 1º usuário).
+- Contrato da API de fatura: consumido pelo front em `services/faturaService.js`; detalhado em
+  `.kiro/specs/controle-fatura-reserva/design.md` ("## Contrato de API").
+
+### Fases anteriores
 - Fase 1 concluída em parte: 1.1 Login e 1.4 Logout (testados).
 - Fase 2: 2.1 Contas e 2.3 Arquivar CONCLUÍDAS (front + BACKEND implementado e testado
   ponta a ponta). EXCEÇÃO ao acordo: a pedido explícito do Gabriel, a IA implementou o
   backend do módulo `conta` (não ficou só esqueleto). Validado via HTTP: criar CARTEIRA/
   CREDITO (201), listar (200), atualizar (200), arquivar (200), tipo inválido (400).
 - Roles: migration 02 aplicada no Neon; conta do dono = `is_master=true, role='ADMIN'`.
-- PENDÊNCIAS BACKEND (Gabriel):
+- PENDÊNCIAS BACKEND (Gabriel) — anteriores:
   - Ligar `is_master`/`role` no JWT (`login.service.js`) + middlewares `exigirMaster`/`exigirAdmin`.
   - Módulo `cadastros/familia/` ainda é esqueleto (listar/atualizar com `// implementar`).
-- PRÓXIMO: 2.2 Visualizar saldos totais no Dashboard; 1.2 Criar Família + 1º Usuário; 1.3 MFA no front.
 - Contrato da API de contas (consumido pelo front em `services/contaService.js`, SEM mock):
   GET `/contas` -> `{data:{contas:[...]}}`; POST `/contas`; PUT `/contas/:id`; DELETE `/contas/:id`.
 
@@ -213,6 +269,29 @@ Decisão fechada ao implementar 2.1 (ver LOG 2026-10-10). Siga EXATAMENTE isto:
     (causava ECONNREFUSED no `/api/login`). Ajustado p/ `http://localhost:3000`.
   - Operacional: senha do usuário `gabrielgoes20@gmail.com` foi redefinida p/ `123456`
     durante os testes (avisar/trocar se necessário).
+- 2026-10-11:
+  - Spec `controle-fatura-reserva`: criado o módulo "Controle de Fatura & Conferência da
+    Reserva" (domínio genérico cartão -> fatura -> lançamento -> importação; Rico = 1º importador).
+  - Banco: `migration-03-controle-fatura.sql` (fatura/fatura_importacao/fatura_transacao com RLS +
+    `utilitario` global com seed de status) VALIDADA (27/27 em PGlite: constraints, uniques, RLS,
+    `NUMERIC`); `db/script.sql` atualizado como fonte da verdade. Validadores em
+    `db/migrations/validate-migration-03.(sql|mjs)` + `db/migrations/README.md` (aplicação MANUAL
+    no SQL Editor do Neon). Decisão: `status_liquidacao` = campo único em texto simples.
+  - Backend (ESQUELETO, Gabriel implementa): `src/modules/fatura/` (routes/controller/service/
+    repositories) + `importadores/rico.parser.js` + `importadores/index.js` + `src/middleware/upload.js`
+    (multer em memória). `multer` ainda PENDENTE de `npm install`. Contrato de API documentado no design.md.
+  - Frontend COMPLETO (IA): `services/faturaService.js` (sem mock); rota `/faturas` + navegação
+    (`Sidebar`/`BottomNavMobile`); `pages/Faturas/Faturas.jsx` (seletor cartão/competência) +
+    6 componentes (`FaturaResumo`, `ReservaCard`, `ImportarFaturaModal`, `FaturaTransacoesTable`,
+    `AnalisePortador`, `AnaliseCategoria`). Build OK. Bloqueio de edição/importação em FECHADA/PAGA.
+  - Legado: `src/app.js` legado REMOVIDO (reversível via git); `src/modules/app.js` segue em uso.
+  - Smoke test preparado (`db/smoke-fatura.http/.mjs/.md` + `db/smoke-fatura-exemplo-rico.csv`),
+    AGUARDANDO o backend de fatura ser implementado e a migration-03 aplicada no Neon.
 
 ## DÍVIDAS
-- (nenhuma aberta)
+- `migration-03` ainda NÃO aplicada no Neon (manual, SQL Editor) — operacional do Gabriel.
+- Smoke test ponta a ponta (`db/smoke-fatura.*`) ainda não rodado contra o Neon (depende da migration).
+- Autorização por papel no módulo fatura: hoje qualquer membro da família opera (decisão de
+  contrato); endurecer p/ `ADMIN` depende de ligar `is_master`/`role` no JWT (pendência anterior).
+
+

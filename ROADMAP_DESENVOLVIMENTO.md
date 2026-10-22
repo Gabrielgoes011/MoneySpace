@@ -11,6 +11,42 @@
 
 ---
 
+## ⭐ Foco atual: Controle de Fatura & Conferência da Reserva
+**Objetivo:** Importar a fatura do cartão (começando pelo Rico), conferir contra a reserva
+guardada (sobra/déficit) e analisar por portador/categoria.
+**Domínio genérico:** cartão (conta `CREDITO`) → fatura → lançamento → importação. Rico é só o
+1º importador (parser plugável). Spec detalhada: `.kiro/specs/controle-fatura-reserva/`.
+**Dependência:** Fase 1 (login) + Fase 2 (contas, para ter o cartão `CREDITO`).
+
+### Banco & fundação 🔴
+- [x] `migration-03-controle-fatura.sql` (`fatura`, `fatura_importacao`, `fatura_transacao` com
+  RLS + `utilitario` global com seed de status) — VALIDADA (27/27 em PGlite)
+- [x] `db/script.sql` atualizado (fonte da verdade) + validadores `validate-migration-03.(sql|mjs)`
+- [ ] Aplicar `migration-03` no Neon (manual, SQL Editor) — **BACK (Gabriel)**
+
+### Backend 🔴 (ESQUELETO pronto; lógica PENDENTE — Gabriel)
+- [x] Esqueleto `src/modules/fatura/` (routes/controller/service/repositories) + contrato de API no design
+- [x] Esqueleto `importadores/rico.parser.js` + `importadores/index.js` (seleção por emissor)
+- [x] Esqueleto `src/middleware/upload.js` (multer em memória)
+- [ ] Implementar services/repositories/controllers + `rico.parser` — **BACK (Gabriel)**
+- [ ] `npm install multer` — **BACK (Gabriel)**
+- [ ] Smoke test `db/smoke-fatura.*` + isolamento de tenant — **BACK (Gabriel)**
+
+### Frontend ✅ CONCLUÍDO (IA)
+- [x] `services/faturaService.js` (sem mock) consumindo `api.js`
+- [x] Rota `/faturas` protegida + navegação (`Sidebar` / `BottomNavMobile`)
+- [x] `Faturas.jsx` com seletor de cartão/competência (troca sem refresh)
+- [x] `FaturaResumo.jsx` (KPIs: total/pago/pendente/fechamento/meta/status) — respeita `PrivacyContext`
+- [x] `ReservaCard.jsx` (saldo declarado → diferença + diagnóstico SOBRA/DÉFICIT)
+- [x] `ImportarFaturaModal.jsx` (preview, erros por linha, confirmação, trata 409 duplicado)
+- [x] `FaturaTransacoesTable.jsx` (`Table` + busca/filtros/sort/edição inline; bloqueia FECHADA/PAGA)
+- [x] `AnalisePortador.jsx` e `AnaliseCategoria.jsx` (total/%/qtd, sem lib de gráfico)
+- [x] Ação de fechar fatura na UI (confirmação + bloqueio pós-fechamento)
+- [x] Build do front OK
+- **Saída:** front 100% pronto; falta só o backend de fatura (Gabriel) p/ rodar ponta a ponta.
+
+---
+
 ## 🎯 Fase 1: Fundação (Autenticação & Segurança)
 **Objetivo:** Ter um app que você consegue acessar com segurança.  
 **Dependência:** Nenhuma (é o começo)  
@@ -330,4 +366,6 @@ Depois, com mais tempo:
 - [ ] Estimar timebox por feature
 - [x] Iniciar Fase 1 (Login)
 - [x] 1.1 Login Simples (Email + Senha)
+- [x] Foco atual: Controle de Fatura & Conferência da Reserva — front completo + esqueleto de back
+- [ ] Backend de fatura (Gabriel): implementar lógica + `multer` + aplicar `migration-03` no Neon
 - [ ] 1.2 Criar Família + Primeiro Usuário

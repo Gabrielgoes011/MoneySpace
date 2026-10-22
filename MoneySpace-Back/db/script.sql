@@ -287,6 +287,132 @@ CREATE TABLE transferencia (
     dt_cadastro TIMESTAMP DEFAULT NOW()
 );
 
+-- ----------------------------------------------------------------------------
+-- fatura: cabeçalho mensal da fatura de cartão de crédito (controle da fatura +
+--   conferência da reserva). Uma competência por família + cartão + mês.
+--   O "cartão" é uma `conta` do tipo 'CREDITO' (não existe tabela de cartões).
+--   `competencia` = 1º dia do mês de referência (DATE).
+--   `saldo_reserva_declarado` = quanto o usuário diz ter guardado na reserva
+--     para esta competência (base da conferência SOBRA/DÉFICIT).
+--   `status`: 'ABERTA' (editável/importável) -> 'FECHADA' -> 'PAGA'.
+--   `fechada_em`/`fechada_por` = auditoria do fechamento (NULL enquanto aberta).
+--   Ex: { competencia:'2026-10-01', nome_exibicao:'Outubro / 2026',
+--         status:'ABERTA', saldo_reserva_declarado:1200.00 }
+-- ----------------------------------------------------------------------------
+CREATE TABLE fatura (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id_familia UUID NOT NULL REFERENCES familia(id) ON DELETE CASCADE,
+    id_conta UUID NOT NULL REFERENCES conta(id),           -- cartão (conta tipo 'CREDITO')
+    competencia DATE NOT NULL,                             -- 1º dia do mês de referência
+    nome_exibicao VARCHAR(50) NOT NULL,                    -- ex: 'Outubro / 2026'
+    status VARCHAR(20) NOT NULL DEFAULT 'ABERTA',          -- 'ABERTA' | 'FECHADA' | 'PAGA'
+    saldo_reserva_declarado NUMERIC(14,2) NOT NULL DEFAULT 0, -- quanto o usuário diz ter guardado
+
+    fechada_em TIMESTAMP,                                  -- quando foi fechada (NULL = aberta)
+    fechada_por UUID REFERENCES usuario(id),               -- quem fechou (auditoria)
+
+    usuario_cadastro VARCHAR(100),                         -- nome de quem criou a competência
+    dt_cadastro TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT chk_fatura_status CHECK (status IN ('ABERTA', 'FECHADA', 'PAGA')),
+    CONSTRAINT uq_fatura_competencia UNIQUE (id_familia, id_conta, competencia) -- 1 competência por cartão/mês
+);
+
+-- ----------------------------------------------------------------------------
+-- fatura_importacao: um lote de CSV importado e confirmado para uma fatura.
+--   `hash_arquivo` = sha256 (hex) do conteúdo do arquivo -> reimportar o MESMO
+--     arquivo na MESMA fatura bate no unique (id_fatura, hash_arquivo) e vira
+--     conflito (409), sem duplicar lançamentos. Não confiar no `nome_arquivo`.
+--   `emissor` = origem do parser (hoje só 'RICO').
+--   Ex: { emissor:'RICO', hash_arquivo:'<sha256>', qtd_linhas:42 }
+-- ----------------------------------------------------------------------------
+CREATE TABLE fatura_importacao (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id_familia UUID NOT NULL REFERENCES familia(id) ON DELETE CASCADE,
+    id_fatura UUID NOT NULL REFERENCES fatura(id) ON DELETE CASCADE,
+
+    emissor VARCHAR(30) NOT NULL DEFAULT 'RICO',           -- origem do parser (hoje só 'RICO')
+    hash_arquivo CHAR(64) NOT NULL,                        -- sha256 (hex) do conteúdo do arquivo
+    nome_arquivo VARCHAR(255),                             -- só auditoria; NÃO confiar no nome
+    tamanho_bytes INTEGER,                                 -- tamanho do upload
+    qtd_linhas INTEGER NOT NULL DEFAULT 0,                 -- linhas válidas persistidas
+
+    usuario_cadastro VARCHAR(100),                         -- nome de quem importou
+    dt_cadastro TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT uq_importacao_hash UNIQUE (id_fatura, hash_arquivo) -- mesmo arquivo não entra 2x
+);
+
+-- ----------------------------------------------------------------------------
+-- fatura_transacao: os lançamentos da fatura (uma linha do CSV = um registro).
+--   `status_liquidacao` é um CAMPO ÚNICO em texto simples (minúsculas, sem '_'):
+--     'pendente' | 'na hora' | 'no fechamento' | 'nao aplicavel'. Já entra
+--     preenchido pela sugestão da importação e é editável direto na tela
+--     (valores coerentes com a tabela `utilitario`, tipo='status').
+--   `valor` = valor absoluto normalizado (sempre positivo). `valor_original` =
+--     texto bruto do CSV (com 'R$'/sinal) para auditoria.
+--   `fingerprint_linha` = sha256 determinístico por linha no lote (inclui a
+--     ordem no arquivo) -> anti-duplicata dentro da mesma importação.
+--   Ex: { dt_compra:'2026-10-05', estabelecimento:'Mercado', valor:100.00,
+--         parcela_texto:'3 de 12', status_liquidacao:'no fechamento' }
+-- ----------------------------------------------------------------------------
+CREATE TABLE fatura_transacao (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id_familia UUID NOT NULL REFERENCES familia(id) ON DELETE CASCADE,
+    id_fatura UUID NOT NULL REFERENCES fatura(id) ON DELETE CASCADE,
+    id_importacao UUID REFERENCES fatura_importacao(id) ON DELETE SET NULL,
+
+    id_usuario_portador UUID REFERENCES usuario(id),       -- portador mapeado (opcional)
+    portador_nome_importado VARCHAR(120),                  -- nome bruto do CSV (auditoria)
+    id_categoria UUID REFERENCES categoria(id),            -- global ou da família
+
+    dt_compra DATE NOT NULL,                               -- data do fato (DATE)
+    estabelecimento VARCHAR(255) NOT NULL,
+    valor NUMERIC(14,2) NOT NULL,                          -- valor normalizado (positivo)
+    valor_original VARCHAR(100),                           -- texto bruto do CSV (auditoria)
+
+    parcela_texto VARCHAR(20) DEFAULT '-',                 -- '-' (à vista) ou 'N de M'
+    numero_parcela SMALLINT,                               -- N (quando parcelada)
+    total_parcelas SMALLINT,                               -- M (quando parcelada)
+
+    status_liquidacao VARCHAR(20) NOT NULL,                -- CAMPO ÚNICO (texto simples)
+
+    fingerprint_linha CHAR(64) NOT NULL,                   -- sha256 determinístico por linha
+    usuario_cadastro VARCHAR(100),                         -- nome de quem importou/lançou
+    dt_cadastro TIMESTAMP DEFAULT NOW(),
+    dt_atualizacao TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT chk_status_liquidacao CHECK (status_liquidacao IN
+        ('pendente', 'na hora', 'no fechamento', 'nao aplicavel')),
+    CONSTRAINT uq_transacao_fingerprint UNIQUE (id_importacao, fingerprint_linha) -- anti-duplicata no lote
+);
+
+-- ----------------------------------------------------------------------------
+-- utilitario: lista genérica e GLOBAL (id, tipo, valor) que alimenta selects/
+--   dropdowns do front por `tipo`. Ex: tipo='status', valor='pendente'. É padrão
+--   do sistema (somente leitura para o usuário), por isso NÃO tem id_familia nem
+--   RLS - como as categorias de sistema. `ordem` controla a ordenação no select.
+--   A estrutura permite outros `tipo`s no futuro sem mudar o schema.
+--   Ex: { tipo:'status', valor:'no fechamento', ordem:3 }
+-- ----------------------------------------------------------------------------
+CREATE TABLE utilitario (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tipo VARCHAR(40) NOT NULL,                             -- ex: 'status'
+    valor VARCHAR(60) NOT NULL,                            -- ex: 'pendente'
+    ordem SMALLINT DEFAULT 0,                              -- ordenação no select (opcional)
+    dt_cadastro TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT uq_utilitario_tipo_valor UNIQUE (tipo, valor)
+);
+
+-- Seed das opções de `status` (texto simples, minúsculas, sem '_'), na ordem de
+-- uso. Faz parte do schema padrão do sistema (dados globais, somente leitura).
+INSERT INTO utilitario (tipo, valor, ordem) VALUES
+    ('status', 'pendente',      1),
+    ('status', 'na hora',       2),
+    ('status', 'no fechamento', 3),
+    ('status', 'nao aplicavel', 4);
+
 
 -- ============================================================================
 -- 3. ÍNDICES (performance)
@@ -321,6 +447,23 @@ CREATE INDEX idx_transferencia_remetente ON transferencia(id_usuario_remetente);
 CREATE INDEX idx_transferencia_destinatario ON transferencia(id_usuario_destinatario);
 CREATE INDEX idx_transferencia_data ON transferencia(dt_transferencia);
 
+-- Controle de fatura: FKs sempre filtradas por família + data usada na tela.
+CREATE INDEX idx_fatura_familia       ON fatura(id_familia);
+CREATE INDEX idx_fatura_conta         ON fatura(id_conta);
+CREATE INDEX idx_fatura_competencia   ON fatura(id_familia, id_conta, competencia);
+
+CREATE INDEX idx_fat_imp_familia      ON fatura_importacao(id_familia);
+CREATE INDEX idx_fat_imp_fatura       ON fatura_importacao(id_fatura);
+
+CREATE INDEX idx_fat_trans_familia    ON fatura_transacao(id_familia);
+CREATE INDEX idx_fat_trans_fatura     ON fatura_transacao(id_fatura);
+CREATE INDEX idx_fat_trans_importacao ON fatura_transacao(id_importacao);
+CREATE INDEX idx_fat_trans_portador   ON fatura_transacao(id_usuario_portador);
+CREATE INDEX idx_fat_trans_categoria  ON fatura_transacao(id_categoria);
+CREATE INDEX idx_fat_trans_data       ON fatura_transacao(dt_compra); -- filtro/sort da tela
+
+CREATE INDEX idx_utilitario_tipo      ON utilitario(tipo); -- busca de opções por tipo
+
 
 -- ============================================================================
 -- 4. ROW-LEVEL SECURITY (RLS)
@@ -344,6 +487,11 @@ ALTER TABLE transacao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE preferencia_notificacao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_destinatario ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transferencia ENABLE ROW LEVEL SECURITY;
+-- Controle de fatura: as três tabelas são POR FAMÍLIA -> RLS habilitada.
+-- OBS: `utilitario` é GLOBAL (opções de sistema, somente leitura) -> SEM RLS.
+ALTER TABLE fatura            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fatura_importacao ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fatura_transacao  ENABLE ROW LEVEL SECURITY;
 
 -- 4.1 Policies: "só vejo/edito o que é da minha família".
 CREATE POLICY acesso_usuario ON usuario
@@ -383,6 +531,16 @@ CREATE POLICY alterar_categoria ON categoria
     );
 
 CREATE POLICY acesso_transferencia ON transferencia
+    FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
+
+-- Controle de fatura: "só vejo/edito o que é da minha família".
+CREATE POLICY acesso_fatura ON fatura
+    FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
+
+CREATE POLICY acesso_fatura_importacao ON fatura_importacao
+    FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
+
+CREATE POLICY acesso_fatura_transacao ON fatura_transacao
     FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
 
 

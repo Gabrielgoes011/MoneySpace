@@ -1,0 +1,336 @@
+### =====================================================================
+### SMOKE TEST — Controle de Fatura & Conferência da Reserva (Task 22)
+### =====================================================================
+###
+### Fluxo completo autenticado + isolamento de tenant (Req 10.1, 10.3).
+### Executável com a extensão "REST Client" (VS Code) ou IntelliJ HTTP Client.
+### Rode as requisições EM ORDEM (de cima para baixo): cada passo depende do
+### anterior (captura de token/ids via variáveis @name).
+###
+### ---------------------------------------------------------------------
+### PRÉ-CONDIÇÕES (NADA PASSA ANTES DISSO) — ver smoke-fatura.md
+### ---------------------------------------------------------------------
+###  1. Gabriel implementou a lógica do backend de fatura:
+###     src/modules/fatura/{controller,service,repositories}.js e
+###     src/modules/fatura/importadores/rico.parser.js (hoje é ESQUELETO:
+###     lança "ainda não implementada").
+###  2. `npm install multer` no MoneySpace-Back (upload.js hoje é esqueleto).
+###  3. migration-03-controle-fatura.sql aplicada no Neon de desenvolvimento.
+###  4. Seed no banco dev:
+###       - FAMÍLIA A com um usuário (login abaixo) e >= 1 conta tipo CREDITO.
+###       - FAMÍLIA B com um usuário DIFERENTE (para o teste de isolamento).
+###  5. Backend rodando: `cd MoneySpace-Back && npm run dev` (porta 3000).
+###
+### PREENCHA os placeholders abaixo (@...) com dados reais do seu seed.
+### NÃO comitar senhas reais: estes valores são de ambiente de desenvolvimento.
+### =====================================================================
+
+@baseUrl = http://localhost:3000/api
+
+# --- Família A (dona dos dados) ---
+@emailA = PREENCHER_email_familia_A
+@senhaA = PREENCHER_senha_familia_A
+# id_conta de uma conta tipo CREDITO da família A (ver GET /contas):
+@idContaCreditoA = PREENCHER_uuid_conta_credito_A
+
+# --- Família B (intruso para teste de isolamento — Req 10.3) ---
+@emailB = PREENCHER_email_familia_B
+@senhaB = PREENCHER_senha_familia_B
+
+# Competência de teste (1º dia do mês):
+@competencia = 2026-10-01
+
+# Caminho do CSV de exemplo (TAB-separated). Já incluído ao lado deste arquivo:
+# MoneySpace-Back/db/smoke-fatura-exemplo-rico.csv
+@csvPath = ./smoke-fatura-exemplo-rico.csv
+
+
+### =====================================================================
+### PASSO 1 — Login família A  → obtém JWT + cookie httpOnly
+### Esperado: 200, data.token presente, Set-Cookie: token=...
+### =====================================================================
+# @name loginA
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "{{emailA}}",
+  "senha": "{{senhaA}}"
+}
+
+###
+@tokenA = {{loginA.response.body.data.token}}
+
+
+### =====================================================================
+### PASSO 2 — Criar competência (fatura) para o cartão CREDITO da família A
+### Esperado: 201, data.fatura.id, status "ABERTA", nome_exibicao "Outubro / 2026"
+### =====================================================================
+# @name criarFatura
+POST {{baseUrl}}/faturas
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "id_conta": "{{idContaCreditoA}}",
+  "competencia": "{{competencia}}"
+}
+
+###
+@idFatura = {{criarFatura.response.body.data.fatura.id}}
+
+
+### =====================================================================
+### PASSO 2b — (opcional) Criar competência duplicada → Esperado: 409
+### Confirma UNIQUE (id_familia, id_conta, competencia) via pgErrorHandler.
+### =====================================================================
+POST {{baseUrl}}/faturas
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "id_conta": "{{idContaCreditoA}}",
+  "competencia": "{{competencia}}"
+}
+
+
+### =====================================================================
+### PASSO 3 — PREVIEW da importação (multipart, campo "arquivo")
+### Esperado: 200, data.hash (64 hex), data.linhas_validas[], data.erros[]
+### Verifique: 1 linha à vista (status "pendente"), 1 parcelada
+### ("no fechamento"), 1 pagamento de fatura ("nao aplicavel", valor negativo).
+### NADA é persistido aqui.
+### =====================================================================
+# @name preview
+POST {{baseUrl}}/faturas/{{idFatura}}/importacoes/preview
+Authorization: Bearer {{tokenA}}
+Content-Type: multipart/form-data; boundary=----SmokeBoundary
+
+------SmokeBoundary
+Content-Disposition: form-data; name="arquivo"; filename="smoke-fatura-exemplo-rico.csv"
+Content-Type: text/csv
+
+< {{csvPath}}
+------SmokeBoundary--
+
+
+### =====================================================================
+### PASSO 4 — CONFIRMAR importação (persiste em transação única, idempotente)
+### Esperado: 201, data.importacao.id, hash_arquivo = o hash do passo 3,
+### qtd_linhas > 0.
+### =====================================================================
+# @name importar
+POST {{baseUrl}}/faturas/{{idFatura}}/importacoes
+Authorization: Bearer {{tokenA}}
+Content-Type: multipart/form-data; boundary=----SmokeBoundary
+
+------SmokeBoundary
+Content-Disposition: form-data; name="arquivo"; filename="smoke-fatura-exemplo-rico.csv"
+Content-Type: text/csv
+
+< {{csvPath}}
+------SmokeBoundary--
+
+
+### =====================================================================
+### PASSO 5 — REIMPORTAR o MESMO arquivo → Esperado: 409 (hash duplicado)
+### message: "Este arquivo já foi importado." SEM duplicar lançamentos.
+### (Depois deste passo, confira no PASSO 8 que o total NÃO dobrou.)
+### =====================================================================
+POST {{baseUrl}}/faturas/{{idFatura}}/importacoes
+Authorization: Bearer {{tokenA}}
+Content-Type: multipart/form-data; boundary=----SmokeBoundary
+
+------SmokeBoundary
+Content-Disposition: form-data; name="arquivo"; filename="smoke-fatura-exemplo-rico.csv"
+Content-Type: text/csv
+
+< {{csvPath}}
+------SmokeBoundary--
+
+
+### =====================================================================
+### PASSO 6 — DASHBOARD → Esperado: 200
+### Verifique resumo: total_fatura (exclui "nao aplicavel"), total_na_hora,
+### total_pendente, total_no_fechamento, meta_reserva (= pendente + na hora),
+### diferenca_reserva, status_conferencia. Com reserva ainda 0.00 →
+### diferenca_reserva negativa e status_conferencia = "DEFICIT".
+### por_portador[] e por_categoria[] presentes.
+### =====================================================================
+GET {{baseUrl}}/faturas/{{idFatura}}/dashboard
+Authorization: Bearer {{tokenA}}
+
+
+### =====================================================================
+### PASSO 7 — ATUALIZAR RESERVA → Esperado: 200
+### Declare um saldo suficiente para cobrir a meta (ex.: acima do total à vista).
+### Em seguida reconsulte o dashboard (PASSO 6) e verifique que diferenca_reserva
+### foi recalculada e status_conferencia virou "OK".
+### =====================================================================
+PATCH {{baseUrl}}/faturas/{{idFatura}}/reserva
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "saldo_reserva_declarado": "5000.00"
+}
+
+
+### =====================================================================
+### PASSO 8 — LISTAR TRANSAÇÕES → Esperado: 200, data.transacoes[], data.total
+### Confirme que total NÃO dobrou após o PASSO 5 (sem duplicação).
+### Copie o id de uma transação À VISTA (status_liquidacao = "pendente")
+### para o PASSO 9.
+### =====================================================================
+# @name transacoes
+GET {{baseUrl}}/faturas/{{idFatura}}/transacoes?sort=dt_compra:desc&page=1
+Authorization: Bearer {{tokenA}}
+
+###
+# Ajuste o índice [0] para apontar para uma transação "pendente" se necessário:
+@idTransacao = {{transacoes.response.body.data.transacoes.0.id}}
+
+
+### =====================================================================
+### PASSO 9 — EDITAR status_liquidacao de uma transação à vista → Esperado: 200
+### Muda "pendente" → "na hora". KPIs mudam de categoria (meta_reserva continua
+### somando pendente+na hora, mas total_pendente cai e total_na_hora sobe).
+### Reconsulte o dashboard (PASSO 6) para confirmar.
+### =====================================================================
+PATCH {{baseUrl}}/faturas/{{idFatura}}/transacoes/{{idTransacao}}
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "status_liquidacao": "na hora"
+}
+
+
+### =====================================================================
+### PASSO 10 — FECHAR fatura → Esperado: 200
+### data.fatura.status = "FECHADA", fechada_em preenchido, fechada_por = user.id.
+### data.proxima com a competência mês+1 ("Novembro / 2026") criada 1x.
+### =====================================================================
+# @name fechamento
+POST {{baseUrl}}/faturas/{{idFatura}}/fechamento
+Authorization: Bearer {{tokenA}}
+
+
+### =====================================================================
+### PASSO 10b — FECHAR de novo (idempotência) → Esperado: 200
+### Não reabre nem recria a próxima; data.proxima reflete a já existente.
+### =====================================================================
+POST {{baseUrl}}/faturas/{{idFatura}}/fechamento
+Authorization: Bearer {{tokenA}}
+
+
+### =====================================================================
+### PASSO 11 — MUTAR fatura FECHADA → Esperado: 409 em todos
+### =====================================================================
+
+### 11a) Importar em fatura fechada → 409
+POST {{baseUrl}}/faturas/{{idFatura}}/importacoes
+Authorization: Bearer {{tokenA}}
+Content-Type: multipart/form-data; boundary=----SmokeBoundary
+
+------SmokeBoundary
+Content-Disposition: form-data; name="arquivo"; filename="smoke-fatura-exemplo-rico.csv"
+Content-Type: text/csv
+
+< {{csvPath}}
+------SmokeBoundary--
+
+### 11b) Editar transação em fatura fechada → 409
+PATCH {{baseUrl}}/faturas/{{idFatura}}/transacoes/{{idTransacao}}
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "status_liquidacao": "pendente"
+}
+
+### 11c) Alterar reserva em fatura fechada → 409
+PATCH {{baseUrl}}/faturas/{{idFatura}}/reserva
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "saldo_reserva_declarado": "100.00"
+}
+
+
+### =====================================================================
+### ISOLAMENTO DE TENANT (Req 10.3) — família B NÃO pode ver dados da A
+### =====================================================================
+
+### PASSO 12 — Login família B → obtém JWT da outra família
+# @name loginB
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "{{emailB}}",
+  "senha": "{{senhaB}}"
+}
+
+###
+@tokenB = {{loginB.response.body.data.token}}
+
+
+### =====================================================================
+### PASSO 13 — Família B tenta LER a fatura da família A → Esperado: 404
+### RLS filtra por id_familia; o recurso "não existe" no contexto de B.
+### NÃO pode vazar o cabeçalho/saldo da família A.
+### =====================================================================
+GET {{baseUrl}}/faturas/{{idFatura}}
+Authorization: Bearer {{tokenB}}
+
+
+### =====================================================================
+### PASSO 14 — Família B tenta o DASHBOARD da fatura da família A → 404
+### =====================================================================
+GET {{baseUrl}}/faturas/{{idFatura}}/dashboard
+Authorization: Bearer {{tokenB}}
+
+
+### =====================================================================
+### PASSO 15 — Família B lista transações da fatura da família A
+### Esperado: 404 (fatura inexistente no tenant) OU 200 com transacoes: []
+### e total: 0. NUNCA retornar linhas da família A.
+### =====================================================================
+GET {{baseUrl}}/faturas/{{idFatura}}/transacoes
+Authorization: Bearer {{tokenB}}
+
+
+### =====================================================================
+### PASSO 16 — Família B tenta MUTAR a reserva da fatura da família A → 404
+### Confirma que não há escrita cruzada entre tenants.
+### =====================================================================
+PATCH {{baseUrl}}/faturas/{{idFatura}}/reserva
+Authorization: Bearer {{tokenB}}
+Content-Type: application/json
+
+{
+  "saldo_reserva_declarado": "1.00"
+}
+
+
+### =====================================================================
+### PASSO 17 — Família B lista as PRÓPRIAS faturas desse cartão da A → 400/200
+### Como o id_conta pertence à família A, para B é como se não existisse.
+### Esperado: 400 (id_conta inválido/não é da família) ou 200 com faturas: [].
+### Confirma que as faturas das duas famílias nunca se cruzam.
+### =====================================================================
+GET {{baseUrl}}/faturas?id_conta={{idContaCreditoA}}
+Authorization: Bearer {{tokenB}}
+
+
+### =====================================================================
+### PASSO 18 — SEM sessão (sem Authorization) → Esperado: 401 em toda rota
+### =====================================================================
+GET {{baseUrl}}/faturas/{{idFatura}}
+
+### FIM — Checklist de status esperados:
+### 1:200  2:201  2b:409  3:200  4:201  5:409  6:200  7:200  8:200  9:200
+### 10:200 10b:200 11a:409 11b:409 11c:409 12:200 13:404 14:404
+### 15:404|200(vazio) 16:404 17:400|200(vazio) 18:401

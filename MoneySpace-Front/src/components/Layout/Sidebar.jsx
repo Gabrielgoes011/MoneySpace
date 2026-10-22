@@ -5,7 +5,7 @@
 
 import { NavLink } from 'react-router-dom';
 import { Button, Separator } from '@heroui/react';
-import { FiHome, FiList, FiCreditCard, FiTag, FiUsers } from 'react-icons/fi';
+import { FiHome, FiList, FiCreditCard, FiFileText, FiTag, FiUsers } from 'react-icons/fi';
 
 function Sidebar() {
   // Navegação principal (o path deve ser igual ao <Route path="..."> do App.jsx).
@@ -13,6 +13,7 @@ function Sidebar() {
     { icon: FiHome, label: 'Início', path: '/' },
     { icon: FiList, label: 'Transações', path: '/transacoes' },
     { icon: FiCreditCard, label: 'Contas', path: '/contas' },
+    { icon: FiFileText, label: 'Faturas', path: '/faturas' },
   ];
 
   // Seção "Cadastros": parte administrativa.

@@ -1,4 +1,4 @@
-// ========================================
+﻿// ========================================
 // 🎯 APP PRINCIPAL
 // ========================================
 // Aqui fica toda a estrutura de rotas e contextos da aplicação
@@ -16,9 +16,11 @@ import Login from './pages/Login/Login';
 import Dashboard from './pages/Dashboard/Dashboard';
 import Transacoes from './pages/Transacoes/Transacoes';
 import Contas from './pages/Contas/Contas';
+import Faturas from './pages/Faturas/Faturas';
 import Categorias from './pages/Categorias/Categorias';
 import Usuarios from './pages/Usuarios/Usuarios';
 import Layout from './components/Layout/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Hook de autenticação
 import { useAuth } from './context/AuthContext';
@@ -66,12 +68,25 @@ function AppRoutes() {
         element={isAuthenticated ? <Navigate to="/" /> : <Login />}
       />
 
-      {/* Rotas protegidas - só acessa se está autenticado */}
+      {/* Rotas protegidas - só acessa se está autenticado.
+          ErrorBoundary evita a "tela branca": um crash numa página mostra
+          a mensagem do erro em vez de derrubar o app inteiro. */}
       {isAuthenticated ? (
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
+          {/* Legado: a tela Transacoes (mock) permanece por ora. A decisão de
+              aposentá-la ou renomeá-la será confirmada com o usuário antes de
+              remover (ver design.md "Rotas e navegação" e Task 23). Não remover. */}
           <Route path="/transacoes" element={<Transacoes />} />
           <Route path="/contas" element={<Contas />} />
+          <Route
+            path="/faturas"
+            element={
+              <ErrorBoundary>
+                <Faturas />
+              </ErrorBoundary>
+            }
+          />
           {/* Cadastros (parte administrativa) */}
           <Route path="/cadastros/usuarios" element={<Usuarios />} />
           <Route path="/cadastros/categorias" element={<Categorias />} />
