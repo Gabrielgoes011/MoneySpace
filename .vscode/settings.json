@@ -1,0 +1,13 @@
+{
+	"editor.tokenColorCustomizations": {
+		"textMateRules": [
+			{
+				"scope": ["comment", "punctuation.definition.comment"],
+				"settings": {"foreground": "#6A9955"}
+			}
+		]
+	},
+	"editor.semanticTokenColorCustomizations": {
+		"rules": {"comment": "#6A9955"}
+	}
+}

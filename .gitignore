@@ -1,0 +1,36 @@
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editores / IDEs
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.sw?
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependências
+node_modules/
+
+# Builds
+dist/
+build/
+# EXCEÇÃO (deploy Discloud / Opção A): o front é compilado localmente e o
+# dist é versionado, pois a Discloud sobe exatamente o que está no commit.
+!MoneySpace-Front/dist/
+!MoneySpace-Front/dist/**
+
+# Variáveis de ambiente (NUNCA versionar segredos)
+.env
+.env.*
+.env.development
+!.env.example
+
+# Escopo / documentos internos do projeto
+escopo_e_arquitetura_app_de_finan_as.md

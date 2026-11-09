@@ -1,0 +1,45 @@
+# Dependências (a Discloud instala via BUILD)
+node_modules
+MoneySpace-Back/node_modules
+MoneySpace-Front/node_modules
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Variáveis de ambiente (segredos vão no painel da Discloud)
+.env
+.env.*
+MoneySpace-Back/.env
+MoneySpace-Back/.env.*
+MoneySpace-Front/.env
+MoneySpace-Front/.env.*
+
+# Código-fonte do front (só o dist compilado é necessário em produção)
+MoneySpace-Front/src
+MoneySpace-Front/public
+MoneySpace-Front/index.html
+MoneySpace-Front/vite.config.js
+
+# Logs e caches
+*.log
+logs
+.vite
+.cache
+.eslintcache
+coverage
+
+# Editores / IDEs / SO
+.vscode
+.idea
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Documentos internos do projeto
+escopo_e_arquitetura_app_de_finan_as.md
+ROADMAP_DESENVOLVIMENTO.md
+agents.md
+README.md
+LICENSE
