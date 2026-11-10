@@ -22,7 +22,7 @@ function Welcome() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-primary/10 via-background to-background text-foreground">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-accent/10 via-background to-background text-foreground">
       <Card className="w-full max-w-md">
         <Card.Header>
           <Card.Title>Bem-vindo, {user?.nome || 'por aqui'} 👋</Card.Title>
@@ -35,8 +35,8 @@ function Welcome() {
           )}
 
           {user?.familia_nome && (
-            <Chip variant="flat" color="primary" startContent={<FiUsers size={14} />}>
-              {user.familia_nome}
+            <Chip variant="soft" color="accent">
+              <FiUsers size={14} /> {user.familia_nome}
             </Chip>
           )}
 

@@ -52,11 +52,11 @@ function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-primary/10 via-background to-background">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-accent/10 via-background to-background">
       <div className="w-full max-w-sm space-y-6">
         {/* ── Marca do template ──────────────────────────────── */}
         <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex items-center justify-center size-12 rounded-xl bg-primary/10 text-primary">
+          <div className="flex items-center justify-center size-12 rounded-xl bg-accent/10 text-accent">
             <FiLayers size={24} />
           </div>
           <h1 className="text-xl font-bold">MoneySpace</h1>

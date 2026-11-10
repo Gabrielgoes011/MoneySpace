@@ -1,289 +1,260 @@
-<div align="center">
-
 # MoneySpace
 
-### Sistema de gestão financeira multi-tenant para núcleos familiares
+Controle simples do cartão de crédito em família.
 
-Aplicação web mobile-first em que várias famílias compartilham a mesma infraestrutura, mas cada uma acessa apenas os próprios dados, com isolamento garantido no nível do banco pelo Row-Level Security do PostgreSQL.
+`React + Vite + HeroUI` · `Node.js + Express` · `PostgreSQL (RLS)` · `JWT + 2FA` · `PWA`
 
-`React + Vite + HeroUI` · `Node.js + Express` · `PostgreSQL (RLS)` · `JWT + 2FA`
+---
 
-</div>
+## Por que existe
+
+O MoneySpace nasceu de outro projeto que não foi pra frente. Aquele queria ser grande demais. Este aqui é o que sobrou da ideia e é bem menor: uma necessidade real de casa.
+
+A família usa cartão de crédito, a fatura vem em CSV ou PDF e ninguém sabe ao certo quem gastou o quê, o que é de quem e quanto precisa ficar na reserva para pagar a fatura. A ideia é resolver isso de um jeito simples, que roda no computador e no celular.
+
+Isto **não é um produto**. Não tem plano de vender, de abrir cadastro para o público nem de virar SaaS. É uma ferramenta de uso interno, feita para a nossa família.
 
 ---
 
 ## Índice
 
-- [Visão geral](#visão-geral)
+- [O que o app faz](#o-que-o-app-faz)
 - [Decisões de arquitetura](#decisões-de-arquitetura)
-- [Modelagem de domínio](#modelagem-de-domínio)
-- [Stack técnica](#stack-técnica)
+- [Stack](#stack)
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Modelo de dados](#modelo-de-dados)
 - [Segurança](#segurança)
-- [Como rodar o projeto](#como-rodar-o-projeto)
+- [Como rodar](#como-rodar)
 - [Status atual](#status-atual)
-- [Roadmap](#roadmap)
+- [Próximos passos](#próximos-passos)
 
 ---
 
-## Visão geral
+## O que o app faz
 
-O MoneySpace organiza as finanças de um núcleo familiar tratando a família como um tenant isolado. Todas as famílias usam a mesma aplicação e o mesmo banco de dados, porém cada registro pertence a uma família e nunca cruza essa fronteira. Esse isolamento não depende de o código lembrar de filtrar por família em cada consulta: ele é aplicado pelo próprio PostgreSQL, via Row-Level Security.
-
-A aplicação cobre o ciclo financeiro de uma casa: contas e cartões, lançamentos à vista e parcelados, classificação por categoria, controle de valores a receber de terceiros e relatórios periódicos. O que diferencia o projeto está menos nas telas e mais nas decisões de modelagem e de segurança descritas a seguir.
+- **Fatura do cartão:** lista os lançamentos de uma fatura, com portador (quem gastou), categoria, parcela e status.
+- **Conferência da reserva:** compara o saldo guardado com o que a fatura vai cobrar.
+- **Status do lançamento:** todo lançamento nasce `pendente` e passa por `na hora`, `no fechamento` ou `pagamento`.
+- **Cadastros:** usuários da família e categorias.
+- **Celular e PC:** o front é mobile-first e instalável como PWA.
 
 ---
 
 ## Decisões de arquitetura
 
-### Multi-tenancy com isolamento no banco
+### Uma família, um tenant
 
-Cada linha de dado carrega o identificador da família (`id_familia`). A cada requisição autenticada, um middleware abre uma transação e define o contexto da família a partir do token:
+A tabela `familia` é o tenant. Os dados de cada família ficam isolados no banco pelo Row-Level Security do PostgreSQL, usando `id_familia`. Hoje só uma família usa o app, mas o isolamento já está pronto e custa pouco manter.
+
+A cada requisição autenticada, o `rlsMiddleware` abre uma transação e define o contexto da família a partir do token:
 
 ```sql
 SELECT set_config('app.current_familia_id', '<uuid-da-familia>', true);
 ```
 
-As políticas de RLS filtram por esse contexto, então mesmo um `SELECT * FROM transacao` sem cláusula `WHERE` devolve apenas os dados da família corrente. A segurança deixa de ser responsabilidade de cada consulta e passa a ser uma garantia da camada de dados.
+As políticas de RLS filtram por esse contexto. Mesmo assim, as queries também filtram por `id_familia` de forma explícita, como segunda barreira.
 
-### Backend em camadas por domínio
+### Backend em 2 camadas
 
-Cada domínio segue a separação Controller, Service e Repository:
+Cada módulo tem só três arquivos:
 
-- **Controller** cuida de `req` e `res` e dos status HTTP. Não contém SQL.
-- **Service** concentra a regra de negócio: validar senha, verificar o segundo fator, montar o token.
-- **Repository** é o único ponto que escreve SQL. Toda consulta passa pelo pool do driver `pg`.
+- **`*.controller.js`** cuida de `req` e `res`, da validação e da regra de negócio. Não tem SQL.
+- **`*.Repositories.js`** é o único lugar com SQL. Recebe `req.db`, o client da transação com o contexto de RLS.
+- **`*.routes.js`** liga o caminho aos middlewares e ao controller, nesta ordem: `verificaToken`, `rlsMiddleware`, controller.
 
-Essa divisão mantém a regra de negócio testável e independente do framework web, e deixa o acesso a dados num só lugar.
+Não existe camada de `service`. Para um app deste tamanho ela só criaria arquivos a mais.
+
+O SQL é sempre literal e parametrizado (`$1`, `$2`). Nada de montar query concatenando texto.
 
 ### Respostas padronizadas
 
-Todas as rotas respondem no mesmo formato, centralizado em `utils/httpResponse.js`:
+Todas as rotas respondem pelo mesmo formato, em `utils/httpResponse.js`:
 
 ```json
 { "success": true,  "message": "...", "data": {} }
 { "success": false, "message": "..." }
 ```
 
-Isso simplifica o consumo no front, que trata sucesso e erro de forma uniforme.
+### Dinheiro
+
+Valores usam `NUMERIC(14,2)`. O driver `pg` devolve `NUMERIC` como string, então o código converte com `Number(valor)` antes de calcular.
+
+### Front e back no mesmo deploy
+
+O backend serve o front compilado (`MoneySpace-Front/dist`). A pasta `dist` fica commitada de propósito, então é preciso rodar `npm run build` no front antes de subir. O deploy é na Discloud (veja `DEPLOY_DISCLOUD.md`).
 
 ---
 
-## Modelagem de domínio
-
-A modelagem é o núcleo do projeto. Três decisões merecem destaque.
-
-### Compra e transação são coisas diferentes
-
-O sistema separa o fato econômico do movimento no tempo:
-
-- **Compra** é a decisão de gastar. Por exemplo, uma televisão de R$ 1.200 em doze vezes.
-- **Transação** é cada movimento efetivo no caixa. A mesma compra em doze vezes gera doze transações, uma por mês, cada uma com data e status próprios.
-
-Com essa separação, o painel consegue responder tanto quanto a compra custou no total quanto quanto dela cai na fatura de um mês específico. É a distinção clássica entre regime de competência e regime de caixa, resolvida na própria modelagem.
-
-### Despesas de terceiros com rastreio de reembolso
-
-Uma compra pode ser registrada em nome de um contato externo à família. Nesse caso ela fica marcada como despesa de terceiro, aponta o devedor e acompanha a situação do reembolso. O efeito prático é que esses valores não se misturam com os gastos próprios da família nos relatórios, e ainda assim ficam rastreados até a quitação.
-
-### Categorias híbridas
-
-As categorias existem em dois níveis. As categorias de sistema (`padrao_sistema = true`, `id_familia = NULL`) já vêm prontas, servem a todas as famílias e ninguém edita. As categorias de família são criadas por cada família, com cor própria e totalmente editáveis. O mesmo mecanismo entrega padrões úteis de imediato e flexibilidade para quem quiser personalizar.
-
-### Precisão monetária
-
-Valores usam `NUMERIC(14,2)`, o que evita erros de ponto flutuante e a necessidade de guardar centavos como inteiros. Vale registrar um detalhe de implementação: o driver `pg` entrega `NUMERIC` como string, então o código converte com `Number(valor)` antes de qualquer cálculo.
-
-### Auditoria sem junção de tabelas
-
-Cada registro guarda o nome de quem o lançou no momento do lançamento (`usuario_cadastro`). Saber quem fez o quê não exige cruzar tabelas, o que torna a leitura mais direta.
-
----
-
-## Stack técnica
+## Stack
 
 | Camada | Tecnologia | Observações |
 | --- | --- | --- |
-| Frontend | React 19 + Vite 8 | SPA mobile-first com React Router 7 |
-| UI | HeroUI v3 + Tailwind CSS 4 | HeroUI para os componentes; Tailwind para ajustes pontuais de layout |
-| HTTP | Axios | Interceptors para token e tratamento de sessão |
-| Backend | Node.js + Express 4 | JavaScript puro com ES Modules, sem TypeScript |
-| Banco | PostgreSQL | Consultas nativas com o driver `pg`, sem ORM |
-| Autenticação | JWT, bcrypt, TOTP (speakeasy) | Access e refresh token; segundo fator opcional por usuário |
-| Isolamento | Row-Level Security | Contexto por requisição via `app.current_familia_id` |
+| Frontend | React 19 + Vite 8 | SPA mobile-first com React Router |
+| UI | HeroUI v3 + Tailwind CSS 4 | Tema verde, claro e escuro |
+| HTTP | Axios | Serviços em `src/services` |
+| Backend | Node.js + Express 4 | JavaScript com ES Modules, sem TypeScript |
+| Banco | PostgreSQL (Neon) | SQL nativo com o driver `pg`, sem ORM |
+| Autenticação | JWT, bcrypt, TOTP | Cookie httpOnly, 2FA opcional |
+| Isolamento | Row-Level Security | Contexto por requisição |
+| PWA | Manifest + service worker | O service worker só roda em produção e nunca guarda `/api` em cache |
 
 ---
 
 ## Estrutura do projeto
 
-Monorepo com dois projetos independentes:
+Monorepo com dois projetos:
 
 ```text
 MoneySpace/
-├── MoneySpace-Back/          API Express + PostgreSQL
-│   ├── server.js             Ponto de entrada (carrega o .env e sobe a porta)
-│   ├── db/script.sql         Schema completo e comentado do banco
+├── MoneySpace-Back/
+│   ├── server.js                       Ponto de entrada
+│   ├── db/script.sql                   Schema do banco (fonte da verdade)
 │   └── src/
-│       ├── config/           env.js (carrega o .env) e configDb.js (pool do pg)
-│       ├── middleware/       verificaToken (JWT), rlsMiddleware, rateLimiter
+│       ├── config/                     env.js e configDb.js (pool do pg)
+│       ├── middleware/                 verificaToken, rlsMiddleware, rateLimiter
 │       ├── modules/
-│       │   ├── app.js        Monta o Express: CORS, parsers, RLS e rotas
-│       │   └── login/        Módulo de login (controller/service/repository/routes)
-│       ├── routes/           health.routes.js
-│       └── utils/            httpResponse, pgErrorHandler, crypto (cifra o 2FA)
+│       │   ├── app.js                  Monta o Express e registra as rotas em /api
+│       │   ├── login/                  Login, 2FA, refresh, logout
+│       │   └── cadastros/
+│       │       ├── familia/            Família
+│       │       ├── usuario/            Usuários da família
+│       │       └── categoria/          Categorias
+│       ├── routes/                     health.routes.js
+│       └── utils/                      httpResponse, pgErrorHandler, crypto
 │
-└── MoneySpace-Front/         React + Vite + HeroUI
+└── MoneySpace-Front/
+    ├── public/                         manifest, service worker e ícones do PWA
     └── src/
-        ├── App.jsx           Rotas e proteção por autenticação
-        ├── pages/            Login, Dashboard, Transacoes, Contas, Categorias
-        ├── components/Layout Header, Sidebar (desktop), BottomNavMobile (mobile)
-        ├── context/          Auth, Theme (claro e escuro), Privacy (ocultar valores)
-        ├── hooks/            useIsMobile
-        ├── services/api.js   Axios central (token e controle de sessão)
-        └── utils/format.js   Formatação de dinheiro e data em pt-BR
+        ├── App.jsx                     Providers e rotas
+        ├── components/Layout/          Topbar, lateral, barra inferior (celular)
+        ├── context/                    Auth, Theme, Fatura (mock compartilhado)
+        ├── pages/                      Login, Dashboard, Faturas, Cadastros,
+        │                               Usuarios, Categorias, Welcome (perfil)
+        ├── services/                   api.js e um service por domínio
+        └── utils/ · hooks/ · mocks/
 ```
 
 ---
 
 ## Modelo de dados
 
-A modelagem é multi-tenant: tudo se liga à família por `id_familia`. As chaves primárias são UUID, as estrangeiras usam o prefixo `id_` e os nomes seguem `snake_case`.
-
-```text
-familia 1───N usuario
-familia 1───N conta           (CORRENTE | CREDITO | CARTEIRA)
-familia 1───N categoria       (do sistema: id_familia = NULL)
-familia 1───N contato
-familia 1───N compra ───N transacao      (uma compra gera N parcelas)
-compra  N───1 conta / categoria / usuario
-compra  N───1 contato         (via id_devedor, quando for despesa de terceiro)
-familia 1───1 preferencia_notificacao
-familia 1───N email_destinatario
-```
+O schema completo e comentado está em [`MoneySpace-Back/db/script.sql`](MoneySpace-Back/db/script.sql). As chaves primárias são UUID, as estrangeiras usam o prefixo `id_` e os nomes seguem `snake_case`.
 
 | Tabela | Papel |
 | --- | --- |
-| `familia` | O tenant. Tudo se isola por ela. |
-| `usuario` | Quem acessa a aplicação. Guarda a senha em hash bcrypt, além de `mfa_secreto` e `mfa_ativo`. |
-| `conta` | Onde o dinheiro fica: conta corrente, carteira ou cartão de crédito (bandeira, final, limite, fechamento, vencimento). |
-| `categoria` | Classificação de receita ou despesa, com a regra híbrida de sistema e família. |
-| `contato` | Pessoas externas ligadas à família, usadas no controle de valores a receber. |
-| `compra` | O fato econômico. Agrupa as parcelas e carrega indicadores como valor reservado, despesa de terceiro e reembolso. |
-| `transacao` | Cada parcela ou movimento efetivo, com status pendente ou efetivada. |
-| `preferencia_notificacao` | Configuração única da família para o relatório periódico. |
-| `email_destinatario` | Lista de e-mails que recebem o relatório. |
+| `familia` | O tenant. |
+| `usuario` | Quem acessa o app. Tem `role` (`ADMIN` ou `MEMBRO`), `is_master` (dono do app), senha em bcrypt e os campos do 2FA. |
+| `utilitario` | Lista global de opções (`tipo`, `valor`, `ordem`) que alimenta selects, como os status e as categorias. Não tem `id_familia` nem RLS. |
+| `fatura_corpo` | A fatura de uma competência, com o saldo de reserva. |
+| `fatura_transacao` | Cada lançamento da fatura, com portador, categoria, parcela e status. |
 
-O schema completo e comentado, com exemplos de uso, está em [`MoneySpace-Back/db/script.sql`](MoneySpace-Back/db/script.sql). As chaves com `ON DELETE CASCADE` fazem com que remover uma família apague todos os seus dados e remover uma compra apague suas parcelas.
+As categorias moram na `utilitario` com `tipo = 'categoria'`. Os valores ficam em minúsculo no banco e o front os exibe em Proper Case.
 
 ---
 
 ## Segurança
 
-### Autenticação em duas camadas
-
-1. **Primeiro fator**: e-mail e senha, com a senha armazenada em hash bcrypt.
-2. **Segundo fator (opcional)**: código TOTP de seis dígitos compatível com aplicativos como o Google Authenticator. O segredo é cifrado com AES-256-GCM (em `utils/crypto.js`) antes de chegar à coluna `mfa_secreto`.
-3. **Sessão**: um access token JWT de vida curta mais um refresh token para renovar sem pedir a senha novamente. O token carrega `id`, `id_familia`, `nome` e `email`.
-
-### Isolamento por família
-
-O contexto de RLS usa o UUID da família, não um identificador de usuário. É esse valor que todas as políticas do banco esperam. Como o filtro vive no banco, uma consulta que esqueça a cláusula de família ainda assim não vaza dados de outro tenant.
-
-### Boas práticas aplicadas
-
-- Segredos como `DATABASE_URL`, `JWT_SECRET` e credenciais de SMTP ficam apenas em variáveis de ambiente, nunca no banco ou no front.
-- As mensagens de login são genéricas, do tipo "e-mail ou senha inválidos", para não revelar se um e-mail existe.
-- As rotas sensíveis (login, segundo fator e refresh) têm rate limiting contra tentativas de força bruta.
+- **Primeiro fator:** e-mail e senha, com a senha em hash bcrypt.
+- **Segundo fator (opcional):** código TOTP de seis dígitos, compatível com o Google Authenticator. O segredo é cifrado com AES-256-GCM antes de ir para o banco.
+- **Sessão:** access token JWT de vida curta e refresh token, em cookie httpOnly.
+- **Permissões:** o token carrega só `id`, `id_familia`, `familia_nome`, `nome` e `email`. O papel (`role`, `is_master`) é lido do banco a cada requisição que precisa dele.
+- **Isolamento:** RLS por família no banco, mais o filtro explícito por `id_familia` nas queries.
+- **Segredos:** `DATABASE_URL`, `JWT_SECRET` e afins ficam só em variáveis de ambiente.
+- **Login:** a mensagem de erro é genérica, para não revelar se um e-mail existe, e as rotas sensíveis têm rate limiting.
 
 ---
 
-## Como rodar o projeto
+## Como rodar
 
 ### Pré-requisitos
 
-- Node.js 18 ou superior e npm
-- Uma instância PostgreSQL, local ou na nuvem (por exemplo, Neon)
+- Node.js 18 ou superior
+- Uma instância PostgreSQL, local ou na nuvem (Neon)
 
 ### 1. Banco de dados
 
-Crie o banco e aplique o schema:
-
 ```bash
-# cria o database (ajuste usuário e host conforme sua instalação)
 psql -U postgres -c "CREATE DATABASE moneyspace;"
-
-# aplica o schema completo
 psql -U postgres -d moneyspace -f MoneySpace-Back/db/script.sql
 ```
+
+Se o banco já existe (por exemplo, no Neon), ele pode estar defasado em relação ao script. Confira as colunas em `information_schema.columns` antes de contar com elas.
 
 ### 2. Backend
 
 ```bash
 cd MoneySpace-Back
 npm install
-# crie o .env.development a partir do exemplo e preencha a DATABASE_URL
-cp .env.example .env.development
-npm run dev            # sobe em http://localhost:3000 com reload automático
+# copie .env.example para .env.development e preencha DATABASE_URL e JWT_SECRET
+npm run dev            # http://localhost:3000
 ```
-
-Variáveis principais do `.env.development`:
 
 | Variável | Para que serve |
 | --- | --- |
 | `PORT` | Porta da API (padrão `3000`) |
 | `NODE_ENV` | `development` ou `production` |
-| `CORS_ORIGIN` | Origem do front liberada (por exemplo, `http://localhost:5173`) |
-| `JWT_SECRET` | Segredo usado para assinar os tokens |
+| `CORS_ORIGIN` | Origem do front liberada (ex.: `http://localhost:5173`) |
+| `JWT_SECRET` | Segredo para assinar os tokens |
 | `DATABASE_URL` | String de conexão do PostgreSQL |
-| `CRYPTO_SECRET` | Opcional. Chave para cifrar o segredo do 2FA; na ausência, usa o `JWT_SECRET` |
+| `CRYPTO_SECRET` | Opcional. Chave para cifrar o segredo do 2FA; sem ela, usa o `JWT_SECRET` |
 
 ### 3. Frontend
 
 ```bash
 cd MoneySpace-Front
 npm install
-# aponte para a API (por exemplo, VITE_API_URL=http://localhost:3000)
-cp .env.example .env.local
-npm run dev            # abre em http://localhost:5173
+# copie .env.example para .env.local e ajuste VITE_API_URL
+npm run dev            # http://localhost:5173 (o proxy encaminha /api para a porta 3000)
+```
+
+Para ver as telas sem backend, rode com os dados de exemplo:
+
+```bash
+VITE_MODO_DEMO=true npm run dev
 ```
 
 ### 4. Primeiro acesso
 
-Como o login é real, é preciso ter ao menos uma família e um usuário com senha em hash bcrypt no banco. Crie-os via SQL ou com um pequeno script Node que gere o hash com `bcrypt.hash(...)` antes de inserir na tabela `usuario`.
+O login é real, então é preciso ter uma família e um usuário no banco, com a senha em hash bcrypt. Crie-os via SQL ou com um pequeno script Node que gere o hash com `bcrypt.hash(...)`. Depois disso, os outros usuários são cadastrados pela tela de Usuários.
+
+### 5. Build e deploy
+
+```bash
+cd MoneySpace-Front
+npm run build          # gera o dist, que o backend serve
+```
 
 ---
 
 ## Status atual
 
-Funcionando de ponta a ponta:
+**Funcionando:**
 
-- Login real contra o banco com bcrypt, access e refresh token e rota `/me`.
-- RLS por família aplicado automaticamente nas requisições autenticadas.
-- Segundo fator TOTP com segredo cifrado, cobrindo iniciar, confirmar, validar e desativar.
-- Front mobile-first com HeroUI: sidebar no desktop, menu inferior no mobile, tema claro e escuro e modo de ocultar valores.
-- Telas iniciais de Dashboard, Transações, Contas e Cartões e Categorias.
-- Feedback de login com toasts (carregando, boas-vindas e erro).
+- Login, 2FA (TOTP) e logout.
+- Cadastro de usuários da família: listar, criar e editar. Só `ADMIN` ou o dono do app (`is_master`) cria e edita.
+- Cadastro de categorias: listar e criar. Só o dono do app cria, porque a tabela é global.
+- Layout com topbar, lateral recolhível e barra inferior no celular, tema claro e escuro, PWA instalável.
 
-As telas financeiras hoje consomem dados de exemplo no formato do banco. Substituí-los por chamadas reais à API é o próximo passo conforme os endpoints de cada domínio ficam prontos.
+**Ainda com dados de exemplo (mock):**
 
----
+- Início (`/dashboard`) e Faturas (`/faturas`). As telas existem e funcionam, mas ainda não leem da API.
 
-## Roadmap
+**Ainda não existe:**
 
-Próximos domínios a implementar no backend, seguindo o padrão controller, service e repository, e a ligar ao front:
-
-- [ ] Contas e cartões: CRUD completo e arquivamento sem exclusão (`ativo`).
-- [ ] Lançamentos: criar a compra e gerar as parcelas automaticamente.
-- [ ] Despesas de terceiros: registrar o devedor e acompanhar o reembolso.
-- [ ] Categorias: CRUD das categorias da família, respeitando as de sistema.
-- [ ] Dashboard e relatórios: agregações reais por categoria, pessoa, conta e período.
-- [ ] Relatório periódico por e-mail: tarefa agendada que lê as preferências e os destinatários e envia via SMTP.
+- Contas e cartões, o módulo de fatura no backend e a importação de CSV.
+- Migrations. O schema vive só no `script.sql`.
 
 ---
 
-<div align="center">
+## Próximos passos
 
-Desenvolvido por Gabriel Goes
+- [ ] Backend da fatura: cartão, fatura por competência e lançamentos, ligados às telas que hoje usam mock.
+- [ ] Importação do CSV da fatura: preview sem gravar, confirmação em uma transação só e idempotência por hash. Todo lançamento importado nasce `pendente`.
+- [ ] Cadastro de contas (o cartão será uma conta do tipo crédito).
+- [ ] Editar e excluir categorias, depois de decidir o que fazer com os lançamentos que usam o texto da categoria.
+- [ ] Normalizar para minúsculo as categorias que já estão no banco.
+- [ ] Trocar os ícones provisórios do PWA.
 
-</div>
+---
+
+Feito por Gabriel Goes, para a família.

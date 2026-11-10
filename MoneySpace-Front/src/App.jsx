@@ -14,16 +14,26 @@ import { ThemeProvider } from './context/ThemeContext';
 // Páginas
 import Login from './pages/Login/Login';
 import Welcome from './pages/Welcome/Welcome';
+import AppLayout from './components/Layout/AppLayout';
+import Faturas from './pages/Faturas/Faturas';
+import EmBreve from './pages/EmBreve/EmBreve';
+import Usuarios from './pages/Usuarios/Usuarios';
+import Cadastros from './pages/Cadastros/Cadastros';
+import Categorias from './pages/Categorias/Categorias';
+import Dashboard from './pages/Dashboard/Dashboard';
+import { FaturaProvider } from './context/FaturaContext';
 
 function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
+        <FaturaProvider>
         <BrowserRouter>
           {/* Toast do HeroUI: toast.success('...'), toast.danger('...') */}
           <Toast.Provider />
           <AppRoutes />
         </BrowserRouter>
+      </FaturaProvider>
       </ThemeProvider>
     </AuthProvider>
   );
@@ -33,7 +43,9 @@ function App() {
 // ROTAS (login público + welcome protegida)
 // ========================================
 function AppRoutes() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated: autenticado, loading } = useAuth();
+  // VITE_MODO_DEMO=true libera as telas sem backend (só para ver o front com mock).
+  const isAuthenticated = autenticado || import.meta.env.VITE_MODO_DEMO === 'true';
 
   // Aguarda carregar os dados de autenticação (evita "piscar" o login).
   if (loading) {
@@ -54,7 +66,17 @@ function AppRoutes() {
 
       {/* Welcome - protegida */}
       {isAuthenticated ? (
-        <Route path="/" element={<Welcome />} />
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/faturas" element={<Faturas />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/cadastros" element={<Cadastros />} />
+          <Route path="/cadastros/usuarios" element={<Usuarios />} />
+          <Route path="/cadastros/contas" element={<EmBreve titulo="Contas" />} />
+          <Route path="/cadastros/categorias" element={<Categorias />} />
+          <Route path="/perfil" element={<Welcome />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Route>
       ) : (
         <Route path="*" element={<Navigate to="/login" />} />
       )}

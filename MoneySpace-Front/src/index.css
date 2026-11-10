@@ -13,3 +13,26 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ── Mobile / iOS ─────────────────────────────────────────────── */
+html { -webkit-text-size-adjust: 100%; }
+body {
+  overscroll-behavior-y: none;            /* sem "elástico" que mostra fundo branco */
+  -webkit-tap-highlight-color: transparent;
+}
+#root { min-height: 100dvh; }              /* dvh: respeita a barra do Safari */
+
+/* iOS dá zoom automático em campos com fonte < 16px: evita isso no celular. */
+@media (max-width: 767px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
+/* ── Cor da marca: verde estilo Spotify ───────────────────────── */
+:root, [data-theme="light"] {
+  --accent: #14873b;
+  --accent-foreground: #ffffff;
+}
+.dark, [data-theme="dark"] {
+  --accent: #1db954;
+  --accent-foreground: #000000;
+}

@@ -26,6 +26,12 @@ export function ThemeProvider({ children }) {
       html.classList.remove('dark');
     }
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
+
+    // Pinta a barra do navegador/Android com a cor de fundo do tema.
+    requestAnimationFrame(() => {
+      const cor = getComputedStyle(document.body).backgroundColor;
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', cor);
+    });
   }, [isDark]);
 
   // Função para alternar tema

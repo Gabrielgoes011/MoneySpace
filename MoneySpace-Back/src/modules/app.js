@@ -15,7 +15,8 @@ import fs from 'fs';
 import healthRoutes from '../routes/health.routes.js';
 import loginRoutes from './login/login.routes.js';
 import familiaRoutes from './cadastros/familia/cadFamilia.routes.js';
-
+import usuarioRoutes from './cadastros/usuario/cadUsuario.routes.js';
+import categoriaRoutes from './cadastros/categoria/cadCategoria.routes.js';
 
 import httpResponse from '../utils/httpResponse.js';
 
@@ -61,6 +62,8 @@ app.use(cookieParser());
 app.use('/api/health', healthRoutes);
 app.use('/api', loginRoutes);
 app.use('/api', familiaRoutes);
+app.use('/api', usuarioRoutes);
+app.use('/api', categoriaRoutes);
 
 // Ping da API (confirma que o backend respondeu).
 app.get('/api', (req, res) =>
