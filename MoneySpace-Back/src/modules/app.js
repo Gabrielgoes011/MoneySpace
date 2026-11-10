@@ -20,6 +20,7 @@ import categoriaRoutes from './cadastros/categoria/cadCategoria.routes.js';
 import cartaoRoutes from './cadastros/cartao/cadCartao.routes.js';
 import dashboardRoutes from './dashboard/dashboard.routes.js';
 import faturaRoutes from './fatura/fatura.routes.js';
+import relatoriosRoutes from './relatorios/relatorios.routes.js';
 
 import httpResponse from '../utils/httpResponse.js';
 
@@ -70,6 +71,7 @@ app.use('/api', categoriaRoutes);
 app.use('/api', cartaoRoutes);
 app.use('/api', dashboardRoutes);
 app.use('/api', faturaRoutes);
+app.use('/api', relatoriosRoutes);
 
 // Ping da API (confirma que o backend respondeu).
 app.get('/api', (req, res) =>

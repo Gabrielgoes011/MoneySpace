@@ -14,6 +14,7 @@ import {
   criarFatura,
   definirSaldoFatura,
   fecharFatura,
+  abrirFatura,
   cadastrarLancamento,
   alterarStatusLancamento
 } from './fatura.controller.js';
@@ -39,6 +40,10 @@ router.post('/faturas/saldo/:id', verificaToken, rlsMiddleware, definirSaldoFatu
 
 // Fecha a fatura (depois disso não aceita mais alteração)
 router.post('/faturas/fechar/:id', verificaToken, rlsMiddleware, fecharFatura);
+//params: id da fatura
+
+// Reabre a fatura fechada para ajustes (lançar, editar, excluir, trocar status)
+router.post('/faturas/abrir/:id', verificaToken, rlsMiddleware, abrirFatura);
 //params: id da fatura
 
 // Lança um gasto manualmente na fatura aberta

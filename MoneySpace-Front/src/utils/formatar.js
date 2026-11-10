@@ -29,6 +29,21 @@ export const dataHora = (iso) => {
 export const iniciais = (nome) =>
   String(nome ?? '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('');
 
+// 'AAAA-MM' -> o mês seguinte em 'AAAA-MM' ('2026-12' -> '2027-01')
+export const proximaCompetencia = (competencia) => {
+  const [ano, mes] = competencia.split('-').map(Number);
+  const proximo = new Date(Date.UTC(ano, mes, 1)); // mês é 0-based: 'mes' já aponta para o seguinte
+  return `${proximo.getUTCFullYear()}-${String(proximo.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+// 'AAAA-MM' -> 'Dezembro de 2026'
+export const nomeCompetencia = (competencia) => {
+  const [ano, mes] = competencia.split('-').map(Number);
+  const data = new Date(Date.UTC(ano, mes - 1, 1));
+  const texto = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(data);
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+};
+
 // Competências dos últimos meses (a partir de hoje), do mais recente para o mais antigo.
 // Devolve [{ id: 'AAAA-MM', nome: 'Novembro de 2026' }].
 export const gerarCompetencias = (quantidade) => {

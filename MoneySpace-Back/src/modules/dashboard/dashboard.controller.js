@@ -5,13 +5,17 @@
 // o SQL fica no repository. Usa `req.db` (transação com RLS aberta pelo rlsMiddleware).
 //
 // Autorização: qualquer membro da família vê o dashboard.
-// Período: `competencia=YYYY-MM` (padrão = mês atual). Cartão: `cartaoId=<uuid>` ou `todos` (padrão).
+// Período: `competencia=YYYY-MM` da fatura (padrão = fatura mais recente do cartão; sem fatura = mês atual).
+// Cartão: `cartaoId=<uuid>` ou `todos`;
+// se não vier, usa o cartão principal da família (`principal = true`), ou todos se não houver principal.
 // Body: não usa (é só leitura). Query: sempre desestruturada em `dados`.
 
 import httpResponse from '../../utils/httpResponse.js';
 import pgErrorHandler from '../../utils/pgErrorHandler.js';
 import {
   listarCartoesDashboardRepository,
+  buscarUltimaCompetenciaRepository,
+  listarCompetenciasRepository,
   totalPorUsuarioRepository,
   totalPorCategoriaRepository,
   totalSemCategoriaRepository,
@@ -25,7 +29,7 @@ const REGEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 //#endregion
 
 //#region => buscar dados do dashboard
-//resposta: { competencia, cartoes, resumo, portadores, categorias, semCategoria }
+//resposta: { competencia, cartaoId, competencias, cartoes, resumo, portadores, categorias, semCategoria }
 async function buscarDashboard(req, res) {
   try {
     //1º passo: recebe os filtros da URL
@@ -34,46 +38,59 @@ async function buscarDashboard(req, res) {
       cartaoId: req.query.cartaoId
     };
 
-    //2º passo: competência (mês atual se não vier)
-    const agora = new Date();
-    const competenciaInformada = dados.competencia !== undefined && dados.competencia !== ''
-      ? String(dados.competencia).trim()
-      : `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+    //2º passo: valida a competência, se vier (se não vier, é definida depois pela fatura mais recente)
+    const competenciaTexto = String(dados.competencia ?? '').trim();
 
-    if (!REGEX_COMPETENCIA.test(competenciaInformada)) {
+    if (competenciaTexto !== '' && !REGEX_COMPETENCIA.test(competenciaTexto)) {
       return httpResponse.validationError(res, 'A competência deve estar no formato AAAA-MM.');
     }
 
-    //3º passo: cartão (null = todos os cartões)
-    const cartaoInformado = String(dados.cartaoId ?? 'todos').trim();
-    const idCartao = cartaoInformado === 'todos' ? null : cartaoInformado;
+    //3º passo: busca os cartões da família (o principal é o cartão padrão do painel)
+    const cartoes = await listarCartoesDashboardRepository(req.db);
 
-    if (idCartao !== null && !REGEX_UUID.test(idCartao)) {
-      return httpResponse.validationError(res, 'Cartão inválido.');
+    //4º passo: cartão do painel. Não informado = o principal; 'todos' = sem filtro (null)
+    const cartaoInformado = String(dados.cartaoId ?? '').trim();
+    const cartaoPrincipal = cartoes.find((cartao) => cartao.principal === true);
+    let idCartao = null;
+
+    if (cartaoInformado === '') {
+      idCartao = cartaoPrincipal ? cartaoPrincipal.id : null;
+    } else if (cartaoInformado !== 'todos') {
+      if (!REGEX_UUID.test(cartaoInformado)) {
+        return httpResponse.validationError(res, 'Cartão inválido.');
+      }
+      idCartao = cartaoInformado;
     }
 
-    //4º passo: período do mês (do dia 1 até o dia 1 do mês seguinte, sem incluir)
-    const [anoTexto, mesTexto] = competenciaInformada.split('-');
-    const inicioPeriodo = `${anoTexto}-${mesTexto}-01`;
-    const fimPeriodo = new Date(Date.UTC(Number(anoTexto), Number(mesTexto), 1)).toISOString().slice(0, 10);
+    //5º passo: competência do painel. Não informada = fatura mais recente do cartão; sem fatura = mês atual
+    let competenciaInformada = competenciaTexto;
 
-    //5º passo: busca todas as infos do painel
-    const [cartoes, resumo, saldoReserva, portadores, categorias, semCategoria] = await Promise.all([
-      listarCartoesDashboardRepository(req.db),
-      resumoPeriodoRepository(req.db, inicioPeriodo, fimPeriodo, idCartao),
-      saldoReservaPeriodoRepository(req.db, idCartao),
-      totalPorUsuarioRepository(req.db, inicioPeriodo, fimPeriodo, idCartao),
-      totalPorCategoriaRepository(req.db, inicioPeriodo, fimPeriodo, idCartao),
-      totalSemCategoriaRepository(req.db, inicioPeriodo, fimPeriodo, idCartao)
+    if (competenciaInformada === '') {
+      const ultimaFatura = await buscarUltimaCompetenciaRepository(req.db, idCartao);
+      const agora = new Date();
+      competenciaInformada = ultimaFatura?.competencia
+        ?? `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    //6º passo: busca o restante das infos do painel pela competência da fatura (igual à tela de Faturas)
+    const [competencias, resumo, saldoReserva, portadores, categorias, semCategoria] = await Promise.all([
+      listarCompetenciasRepository(req.db, idCartao),
+      resumoPeriodoRepository(req.db, competenciaInformada, idCartao),
+      saldoReservaPeriodoRepository(req.db, competenciaInformada, idCartao),
+      totalPorUsuarioRepository(req.db, competenciaInformada, idCartao),
+      totalPorCategoriaRepository(req.db, competenciaInformada, idCartao),
+      totalSemCategoriaRepository(req.db, competenciaInformada, idCartao)
     ]);
 
-    //6º passo: porcentagem de cada linha sobre o total do período (pg devolve NUMERIC como texto)
+    //7º passo: porcentagem de cada linha sobre o total do período (pg devolve NUMERIC como texto)
     const totalGeral = Number(resumo.total);
     const calcularPct = (valor) => (totalGeral > 0 ? (Number(valor) / totalGeral) * 100 : 0);
 
     //retorna o painel montado
     return httpResponse.success(res, 'Dashboard carregado com sucesso!', {
       competencia: competenciaInformada,
+      cartaoId: idCartao ?? 'todos',
+      competencias: competencias.map((linha) => linha.competencia),
       cartoes,
       resumo: {
         pago: Number(resumo.pago),

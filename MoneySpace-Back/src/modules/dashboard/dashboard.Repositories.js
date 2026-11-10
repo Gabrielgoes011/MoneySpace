@@ -4,7 +4,8 @@
 // Só SQL. Todas as funções recebem `db` = req.db (transação com RLS).
 // Além do RLS, toda query filtra por `id_familia` explicitamente.
 // Gastos vêm dos lançamentos (fatura_transacao) das faturas da família.
-// Parâmetros de período: `inicioPeriodo` (1º dia do mês) e `fimPeriodo` (1º dia do mês seguinte).
+// Período = COMPETÊNCIA da fatura (AAAA-MM), igual à tela de Faturas. A data da compra NÃO filtra:
+// a fatura de outubro tem compras de 26/09 a 25/10 e todas contam em outubro.
 // `idCartao` = null significa "todos os cartões".
 // Alias de tabela: só letra, na ordem a, b, c, d, e (1ª tabela = a, 2ª = b...).
 // Regra: SQL 100% literal e parametrizado ($1, $2). Nada de concatenar string na query.
@@ -34,10 +35,45 @@ async function listarCartoesDashboardRepository(db) {
 }
 //#endregion
 
+//#region => Query da competência padrão do painel
+//competência da fatura mais recente (do cartão escolhido ou de todos)
+async function buscarUltimaCompetenciaRepository(db, idCartao) {
+
+    //executa a consulta SQL: maior competência entre as faturas da família
+    const resultado = await db.query(`
+        SELECT MAX(a.competencia) AS competencia
+        FROM fatura_corpo a
+        WHERE a.id_familia = current_setting('app.current_familia_id', true)::uuid
+        AND a.competencia IS NOT NULL
+        AND ($1::uuid IS NULL OR a.id_cartao = $1::uuid)`, [idCartao]
+    );
+
+    //retorna a competência (null se não houver fatura)
+    return resultado.rows[0];
+}
+
+//competências que têm fatura (do cartão escolhido ou de todos), da mais recente para a mais antiga
+async function listarCompetenciasRepository(db, idCartao) {
+
+    //executa a consulta SQL: competências distintas das faturas da família
+    const resultado = await db.query(`
+        SELECT DISTINCT a.competencia
+        FROM fatura_corpo a
+        WHERE a.id_familia = current_setting('app.current_familia_id', true)::uuid
+        AND a.competencia IS NOT NULL
+        AND ($1::uuid IS NULL OR a.id_cartao = $1::uuid)
+        ORDER BY a.competencia DESC`, [idCartao]
+    );
+
+    //retorna a lista de competências
+    return resultado.rows;
+}
+//#endregion
+
 //#region => Queries de gasto por usuário (quem gasta mais)
-//lista TODOS os usuários da família com o total gasto no período (0 se não gastou)
+//lista TODOS os usuários da família com o total gasto na competência (0 se não gastou)
 //o portador da fatura é o nome vindo do CSV, então o vínculo é pelo nome (sem diferença de maiúsculas)
-async function totalPorUsuarioRepository(db, inicioPeriodo, fimPeriodo, idCartao) {
+async function totalPorUsuarioRepository(db, competencia, idCartao) {
 
     //executa a consulta SQL: LEFT JOIN para manter quem não tem nenhum lançamento
     const resultado = await db.query(`
@@ -50,19 +86,18 @@ async function totalPorUsuarioRepository(db, inicioPeriodo, fimPeriodo, idCartao
         LEFT JOIN fatura_transacao b
             ON UPPER(TRIM(b.portador)) = UPPER(TRIM(a.nome))
             AND b.id_familia = current_setting('app.current_familia_id', true)::uuid
-            AND b.dt_compra >= $1::date
-            AND b.dt_compra < $2::date
             AND b.valor > 0
             AND b.estabelecimento <> 'Pagamento de fatura'
             AND b.id_fatura IN (
                 SELECT c.id_fatura
                 FROM fatura_corpo c
                 WHERE c.id_familia = current_setting('app.current_familia_id', true)::uuid
-                AND ($3::uuid IS NULL OR c.id_cartao = $3::uuid)
+                AND c.competencia = $1
+                AND ($2::uuid IS NULL OR c.id_cartao = $2::uuid)
             )
         WHERE a.id_familia = current_setting('app.current_familia_id', true)::uuid
         GROUP BY a.id, a.nome
-        ORDER BY total DESC, a.nome ASC`, [inicioPeriodo, fimPeriodo, idCartao]
+        ORDER BY total DESC, a.nome ASC`, [competencia, idCartao]
     );
 
     //retorna a lista de usuários com o total
@@ -71,9 +106,9 @@ async function totalPorUsuarioRepository(db, inicioPeriodo, fimPeriodo, idCartao
 //#endregion
 
 //#region => Queries de gasto por categoria
-//lista TODAS as categorias cadastradas (tabela global utilitario) com o total no período
+//lista TODAS as categorias cadastradas (tabela global utilitario) com o total na competência
 //a categoria do lançamento é o texto da categoria, então o vínculo é pelo valor (sem diferença de maiúsculas)
-async function totalPorCategoriaRepository(db, inicioPeriodo, fimPeriodo, idCartao) {
+async function totalPorCategoriaRepository(db, competencia, idCartao) {
 
     //executa a consulta SQL: LEFT JOIN para manter categorias sem gasto
     const resultado = await db.query(`
@@ -86,19 +121,18 @@ async function totalPorCategoriaRepository(db, inicioPeriodo, fimPeriodo, idCart
         LEFT JOIN fatura_transacao b
             ON UPPER(TRIM(b.categoria)) = UPPER(TRIM(a.valor))
             AND b.id_familia = current_setting('app.current_familia_id', true)::uuid
-            AND b.dt_compra >= $1::date
-            AND b.dt_compra < $2::date
             AND b.valor > 0
             AND b.estabelecimento <> 'Pagamento de fatura'
             AND b.id_fatura IN (
                 SELECT c.id_fatura
                 FROM fatura_corpo c
                 WHERE c.id_familia = current_setting('app.current_familia_id', true)::uuid
-                AND ($3::uuid IS NULL OR c.id_cartao = $3::uuid)
+                AND c.competencia = $1
+                AND ($2::uuid IS NULL OR c.id_cartao = $2::uuid)
             )
         WHERE a.tipo = 'categoria'
         GROUP BY a.id, a.valor
-        ORDER BY total DESC, a.valor ASC`, [inicioPeriodo, fimPeriodo, idCartao]
+        ORDER BY total DESC, a.valor ASC`, [competencia, idCartao]
     );
 
     //retorna a lista de categorias com o total
@@ -106,7 +140,7 @@ async function totalPorCategoriaRepository(db, inicioPeriodo, fimPeriodo, idCart
 }
 
 //total dos lançamentos SEM categoria (vazia ou que não existe mais no cadastro)
-async function totalSemCategoriaRepository(db, inicioPeriodo, fimPeriodo, idCartao) {
+async function totalSemCategoriaRepository(db, competencia, idCartao) {
 
     //executa a consulta SQL: lançamentos cuja categoria não bate com nenhuma cadastrada
     const resultado = await db.query(`
@@ -115,22 +149,21 @@ async function totalSemCategoriaRepository(db, inicioPeriodo, fimPeriodo, idCart
             COUNT(a.id_transacao)::int AS qtd
         FROM fatura_transacao a
         WHERE a.id_familia = current_setting('app.current_familia_id', true)::uuid
-        AND a.dt_compra >= $1::date
-        AND a.dt_compra < $2::date
         AND a.valor > 0
         AND a.estabelecimento <> 'Pagamento de fatura'
         AND a.id_fatura IN (
             SELECT b.id_fatura
             FROM fatura_corpo b
             WHERE b.id_familia = current_setting('app.current_familia_id', true)::uuid
-            AND ($3::uuid IS NULL OR b.id_cartao = $3::uuid)
+            AND b.competencia = $1
+            AND ($2::uuid IS NULL OR b.id_cartao = $2::uuid)
         )
         AND NOT EXISTS (
             SELECT 1
             FROM utilitario c
             WHERE c.tipo = 'categoria'
             AND UPPER(TRIM(c.valor)) = UPPER(TRIM(a.categoria))
-        )`, [inicioPeriodo, fimPeriodo, idCartao]
+        )`, [competencia, idCartao]
     );
 
     //retorna o total e a quantidade
@@ -139,8 +172,8 @@ async function totalSemCategoriaRepository(db, inicioPeriodo, fimPeriodo, idCart
 //#endregion
 
 //#region => Query do resumo da fatura (cards do topo)
-//soma por status do lançamento no período
-async function resumoPeriodoRepository(db, inicioPeriodo, fimPeriodo, idCartao) {
+//soma por status do lançamento na competência
+async function resumoPeriodoRepository(db, competencia, idCartao) {
 
     //executa a consulta SQL: totais por status dos lançamentos
     const resultado = await db.query(`
@@ -151,31 +184,31 @@ async function resumoPeriodoRepository(db, inicioPeriodo, fimPeriodo, idCartao) 
             COALESCE(SUM(a.valor), 0) AS total
         FROM fatura_transacao a
         WHERE a.id_familia = current_setting('app.current_familia_id', true)::uuid
-        AND a.dt_compra >= $1::date
-        AND a.dt_compra < $2::date
         AND a.valor > 0
         AND a.estabelecimento <> 'Pagamento de fatura'
         AND a.id_fatura IN (
             SELECT b.id_fatura
             FROM fatura_corpo b
             WHERE b.id_familia = current_setting('app.current_familia_id', true)::uuid
-            AND ($3::uuid IS NULL OR b.id_cartao = $3::uuid)
-        )`, [inicioPeriodo, fimPeriodo, idCartao]
+            AND b.competencia = $1
+            AND ($2::uuid IS NULL OR b.id_cartao = $2::uuid)
+        )`, [competencia, idCartao]
     );
 
     //retorna os totais do resumo
     return resultado.rows[0];
 }
 
-//saldo da reserva digitado nas faturas do cartão escolhido (soma)
-async function saldoReservaPeriodoRepository(db, idCartao) {
+//saldo da reserva digitado nas faturas da competência, do cartão escolhido (soma)
+async function saldoReservaPeriodoRepository(db, competencia, idCartao) {
 
-    //executa a consulta SQL: soma o saldo_reserva das faturas da família para o cartão escolhido
+    //executa a consulta SQL: soma o saldo_reserva das faturas da família na competência
     const resultado = await db.query(`
         SELECT COALESCE(SUM(a.saldo_reserva), 0) AS saldo_reserva
         FROM fatura_corpo a
         WHERE a.id_familia = current_setting('app.current_familia_id', true)::uuid
-        AND ($1::uuid IS NULL OR a.id_cartao = $1::uuid)`, [idCartao]
+        AND a.competencia = $1
+        AND ($2::uuid IS NULL OR a.id_cartao = $2::uuid)`, [competencia, idCartao]
     );
 
     //retorna o saldo
@@ -186,6 +219,8 @@ async function saldoReservaPeriodoRepository(db, idCartao) {
 //#region => exportação das funções
 export {
     listarCartoesDashboardRepository,
+    buscarUltimaCompetenciaRepository,
+    listarCompetenciasRepository,
     totalPorUsuarioRepository,
     totalPorCategoriaRepository,
     totalSemCategoriaRepository,

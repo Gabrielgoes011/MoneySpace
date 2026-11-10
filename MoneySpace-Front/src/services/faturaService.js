@@ -48,6 +48,14 @@ export async function fecharFatura(idFatura) {
     .catch(comMensagem);
 }
 
+// Reabre a fatura fechada para ajustes (volta a aceitar lançamento, edição, exclusão e troca de status).
+export async function abrirFatura(idFatura) {
+  return api
+    .post(`/faturas/abrir/${idFatura}`)
+    .then((r) => r.data.data)
+    .catch(comMensagem);
+}
+
 export async function cadastrarLancamento(dados) {
   return api
     .post('/faturas/lancamentos/cadastrar', dados)

@@ -120,7 +120,8 @@ MoneySpace-Back/
   src/modules/cadastros/categoria/        cadCategoria.{controller,Repositories,routes}.js (IMPLEMENTADO: GET/POST /categorias)
   src/modules/cadastros/cartao/           cadCartao.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /cartoes, POST /cartoes/cadastrar, POST /cartoes/deletar/:id)
   src/modules/dashboard/                  dashboard.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /dashboard)
-  src/modules/fatura/                     fatura.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /faturas, POST /faturas/cadastrar, /saldo/:id, /fechar/:id, /lancamentos/cadastrar, /lancamentos/status/:id)
+  src/modules/fatura/                     fatura.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /faturas, GET /faturas/listar, POST /faturas/cadastrar, /saldo/:id, /fechar/:id, /abrir/:id, /lancamentos/cadastrar, /lancamentos/editar/:id, /lancamentos/deletar/:id, /lancamentos/status/:id)
+  src/modules/relatorios/                 relatorios.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /relatorios/fatura?faturaId=)
   src/utils/{httpResponse,pgErrorHandler,crypto,cpf}.js
 MoneySpace-Front/
   index.html (meta iOS/PWA) · public/{manifest.webmanifest,sw.js,icons/*}
@@ -148,10 +149,26 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
   DECISÃO TEMPORÁRIA: `fatura_transacao.portador` é o NOME do CSV, então "quem gasta" casa por nome (sem diferença de
   maiúsculas). Trocar por `id_usuario` na fatura quando o módulo de fatura for construído.
   Lançamento de pagamento (`estabelecimento = 'Pagamento de fatura'`) e valor <= 0 ficam FORA dos gastos.
-  Front do dashboard ainda NÃO usa este endpoint (usa `/cartoes`, `/usuarios`, `/categorias`, valores zerados).
-- Início (`/dashboard`, 2026-11-10): SEM mock. Lista de cartões = `GET /cartoes`; "quem gasta" = `GET /usuarios`;
-  categorias = `GET /categorias` + linha fixa "Sem categoria" no fim. Valores de gasto ficam ZERADOS até existir fatura
-  importada (resumo, portadores, categorias). Competência = últimos 6 meses (gerada), mas AINDA não filtra nada.
+  Sem `cartaoId`, usa o cartão `principal = true` (ou todos se não houver); a resposta traz `cartaoId` escolhido.
+  `saldoReserva` soma só as faturas da competência pedida. Período dos gastos = COMPETÊNCIA da fatura
+  (`fatura_corpo.competencia`), igual à tela de Faturas; a data da compra não filtra.
+  Sem `competencia`, usa a fatura MAIS RECENTE do cartão (sem fatura = mês atual); a resposta traz `competencias[]`
+  (só as que têm fatura). Conferido contra o Neon (Out/2026, Rico: total 4.986,70 = soma direta da fatura).
+- Início (`/dashboard`, 2026-11-10): consome SÓ `GET /dashboard` (`services/dashboardService.js`). Abre no cartão
+  principal e na fatura mais recente; seletor de competência = só meses com fatura. Trocar cartão volta para a
+  fatura mais recente dele. NÃO testado no navegador.
+- RELATÓRIOS (2026-11-10): aba `/relatorios` (menu). Escolhe cartão e fatura, "Gerar relatório" mostra o resumo,
+  e os botões: "Compartilhar (WhatsApp)" (folha de compartilhar do aparelho; sem suporte, baixa o PDF), "Baixar PDF"
+  e "Copiar resumo" (texto para colar no grupo). PDF gerado NO APARELHO com jsPDF + jspdf-autotable
+  (`src/utils/relatorioFatura.js`), sem servidor. Dados: `GET /relatorios/fatura` (cabeçalho, resumo por status,
+  por pessoa, por categoria e todos os lançamentos). Testado com PGlite (20 cenários). PDF NÃO visto
+  visualmente (sem renderizador no ambiente de teste); só texto e paginação conferidos.
+  Aba "Por semana" (`GET /relatorios/semanal?faturaId=`): semanas segunda a domingo com o total e o total por
+  categoria, mais os lançamentos de cada categoria (recolhíveis na tela e no PDF). Mesmos botões de compartilhar,
+  baixar e copiar. Testado com PGlite (12 cenários da semana; soma das semanas = total da fatura).
+  Próximo relatório planejado: pendências.
+- DÍVIDA TÉCNICA: controllers usam `Promise.all` no mesmo `req.db` (client da transação). O `pg` enfileira, mas avisa
+  que isso será removido no pg@9. Trocar por `await` em sequência quando atualizar o `pg`.
 - FATURAS (2026-11-10): SEM MOCK, lê e grava no banco. Cabeçalho (`fatura_corpo`) tem `id_cartao`, `competencia`
   (AAAA-MM), `data_fechamento`, `data_vencimento`; 1 fatura por cartão e competência (índice único). Sem fatura no mês,
   o cabeçalho mostra "Criar fatura" (confirmação; fechamento/vencimento saem dos dias do cartão: fecha no mês da
@@ -163,7 +180,12 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
   pelo Gabriel). CSV ainda não existe (botão removido até lá). Seletor "Fatura" lista só as faturas que JÁ EXISTEM
   do cartão (`GET /faturas/listar?cartaoId=`, nome = título, mais recente primeiro); criar mês novo = modal com campo mês.
   Status na API: `pendente` | `na hora` | `no fechamento` | `nao aplicavel` (o front converte).
-  Tabela de lançamentos: 10 por página, campo "itens por página" (máx. 200). Categoria e status são dropdown na linha.
+  Tabela de lançamentos (`TransacoesLista.jsx`, tudo no front): UMA pesquisa (sem acento) que aceita texto livre e
+  `Coluna: valor` separados por `;`. Desktop: título da coluna abre menu (filtrar, que grava `Coluna: valor` na
+  pesquisa, e ordenar). Celular: select "Ordenar". Paginação compacta com "…" (celular: "3 de 13");
+  itens por página = select 10/25/50/100/200.
+  Conferência da reserva (PC) recolhe pelo botão «« ao lado de "Lançamentos": sobe e some, depois a coluna fecha e o
+  grid cresce para a esquerda (abrir = inverso). Estado lembrado em `localStorage` (`faturas:conferencia`). Categoria e status são dropdown na linha.
   Ações por linha: editar (`POST /faturas/lancamentos/editar/:id`, campo não enviado fica como está; `idUsuario: ''` e
   `categoria: ''` tiram portador/categoria) e excluir (`POST /faturas/lancamentos/deletar/:id`). Ambas só com fatura aberta.
   Testado com PGlite (fatura: 60 cenários).

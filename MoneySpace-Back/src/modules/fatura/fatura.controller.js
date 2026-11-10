@@ -25,6 +25,7 @@ import {
   criarFaturaRepository,
   definirSaldoFaturaRepository,
   fecharFaturaRepository,
+  abrirFaturaRepository,
   buscarCategoriaRepository,
   criarLancamentoRepository,
   buscarLancamentoComFaturaRepository,
@@ -642,8 +643,43 @@ async function listarFaturasCartao(req, res) {
 }
 //#endregion
 
+//#region => reabrir fatura (para ajustes)
+//params: :id da fatura
+async function abrirFatura(req, res) {
+  try {
+    //1º passo: valida o id
+    const { id: idFatura } = req.params;
+
+    if (!REGEX_UUID.test(String(idFatura))) {
+      return httpResponse.validationError(res, 'Fatura inválida.');
+    }
+
+    //2º passo: a fatura precisa existir e estar fechada
+    const faturaEncontrada = await buscarFaturaPorIdRepository(req.db, idFatura);
+
+    if (!faturaEncontrada) {
+      return httpResponse.notFound(res, 'Fatura não encontrada.');
+    }
+    if (faturaEncontrada.status_fat !== 'FECHADA') {
+      return httpResponse.conflict(res, 'Esta fatura já está aberta.');
+    }
+
+    //3º passo: volta para aberta
+    await abrirFaturaRepository(req.db, idFatura);
+
+    return httpResponse.success(res, 'Fatura reaberta com sucesso!', { fechada: false });
+
+  } catch (error) {
+    console.error('Erro ao reabrir a fatura na etapa do controller:', error);
+    const secureMessage = pgErrorHandler(error, 'Erro ao reabrir a fatura.');
+    return httpResponse.error(res, secureMessage);
+  }
+}
+//#endregion
+
 //#region => exportação das funções
 export {
+  abrirFatura,
   listarFaturasCartao,
   editarLancamento,
   excluirLancamento,

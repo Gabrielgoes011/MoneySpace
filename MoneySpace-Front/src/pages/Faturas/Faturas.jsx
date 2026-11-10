@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Chip, Spinner, Tabs, toast, useOverlayState } from '@heroui/react';
-import { FiPlus } from 'react-icons/fi';
+import { FiPlus, FiChevronsLeft } from 'react-icons/fi';
 import Seletor from '../../components/Seletor';
 import useIsMobile from '../../hooks/useIsMobile';
 import { listarCartoes } from '../../services/cartaoService';
@@ -17,8 +17,11 @@ import {
   fecharFatura,
   salvarSaldoFatura,
   alterarStatusLancamento,
-  editarLancamento
+  editarLancamento,
+  criarFatura,
+  abrirFatura
 } from '../../services/faturaService';
+import { proximaCompetencia, nomeCompetencia } from '../../utils/formatar';
 import { STATUS, statusDoBanco } from '../../utils/statusFatura';
 import { calcular } from './componentes/calculos';
 import ConferenciaReserva from './componentes/ConferenciaReserva';
@@ -27,6 +30,9 @@ import TransacoesLista from './componentes/TransacoesLista';
 import CriarFaturaModal from './componentes/CriarFaturaModal';
 import LancamentoFormModal from './componentes/LancamentoFormModal';
 import ExcluirLancamentoModal from './componentes/ExcluirLancamentoModal';
+import ProximaFaturaModal from './componentes/ProximaFaturaModal';
+
+const CHAVE_CONFERENCIA = 'faturas:conferencia';
 
 // '2026-10-25' -> '25/10'
 const br = (iso) => iso.split('-').reverse().join('/');
@@ -49,8 +55,20 @@ export default function Faturas() {
   const modalCriar = useOverlayState();
   const modalLancar = useOverlayState();
   const modalExcluir = useOverlayState();
+  const modalProxima = useOverlayState();
   const [lancamentoEditando, setLancamentoEditando] = useState(null); // null = criar novo
   const [lancamentoExcluindo, setLancamentoExcluindo] = useState(null);
+  // Conferência aberta/recolhida no PC (fica lembrado entre as visitas).
+  const [conferenciaAberta, setConferenciaAberta] = useState(
+    () => localStorage.getItem(CHAVE_CONFERENCIA) !== 'recolhida'
+  );
+
+  const alternarConferencia = () => {
+    setConferenciaAberta((aberta) => {
+      localStorage.setItem(CHAVE_CONFERENCIA, aberta ? 'recolhida' : 'aberta');
+      return !aberta;
+    });
+  };
 
   // Carrega cartões, membros e categorias (para os selects e lançamentos).
   useEffect(() => {
@@ -134,9 +152,40 @@ export default function Faturas() {
     salvarSaldoFatura(fatura.id, saldoNumero).catch((e) => toast.danger(e.message));
   };
 
+  // Fecha a fatura e pergunta se já quer abrir a próxima.
   const fechar = () => {
     fecharFatura(fatura.id)
-      .then(() => { toast.success('Fatura fechada.'); return carregarFatura(); })
+      .then(() => {
+        toast.success('Fatura fechada.');
+        carregarFatura();
+        modalProxima.open();
+      })
+      .catch((e) => toast.danger(e.message));
+  };
+
+  // Reabre a fatura fechada para ajustes.
+  const reabrir = () => {
+    abrirFatura(fatura.id)
+      .then(() => { toast.success('Fatura aberta para ajustes.'); return carregarFatura(); })
+      .catch((e) => toast.danger(e.message));
+  };
+
+  // Abre a fatura do mês seguinte: seleciona se já existe, senão cria.
+  const abrirProxima = () => {
+    const competenciaSeguinte = proximaCompetencia(fatura.competencia);
+    const jaExiste = faturasCartao.some((f) => f.competencia === competenciaSeguinte);
+
+    if (jaExiste) {
+      setCompetenciaId(competenciaSeguinte);
+      return;
+    }
+
+    criarFatura(cartaoId, competenciaSeguinte)
+      .then((faturaCriada) => {
+        toast.success(`Fatura de ${faturaCriada.titulo} criada.`);
+        carregarFaturasCartao(false);
+        setCompetenciaId(faturaCriada.competencia);
+      })
       .catch((e) => toast.danger(e.message));
   };
 
@@ -182,6 +231,7 @@ export default function Faturas() {
       onSalvarSaldo={salvarSaldo}
       fechada={fatura.fechada}
       onFechar={fechar}
+      onAbrir={reabrir}
     />
   );
 
@@ -189,7 +239,19 @@ export default function Faturas() {
 
   const lancamentosSecao = fatura && (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold">Lançamentos ({lancamentos.length})</h2>
+      <div className="flex items-center gap-2">
+        {!isMobile && (
+          <Button
+            isIconOnly size="sm" variant="ghost"
+            aria-label={conferenciaAberta ? 'Recolher conferência' : 'Mostrar conferência'}
+            aria-expanded={conferenciaAberta}
+            onPress={alternarConferencia}
+          >
+            <FiChevronsLeft size={18} className={`transition-transform duration-300 ${conferenciaAberta ? '' : 'rotate-180'}`} />
+          </Button>
+        )}
+        <h2 className="text-lg font-semibold">Lançamentos ({lancamentos.length})</h2>
+      </div>
       <Tabs selectedKey={filtro} onSelectionChange={setFiltro}>
         <Tabs.ListContainer>
           <Tabs.List aria-label="Filtrar por status">
@@ -201,7 +263,7 @@ export default function Faturas() {
         </Tabs.ListContainer>
       </Tabs>
       <TransacoesLista
-        key={`${cartaoId}:${competenciaId}:${filtro}`}
+        key={`${cartaoId}:${competenciaId}`}
         transacoes={visiveis}
         bloqueada={fatura.fechada}
         categorias={categorias}
@@ -258,10 +320,20 @@ export default function Faturas() {
     );
   } else {
     // PC: conferência fixa à esquerda e lançamentos à direita.
+    // Recolher em 2 tempos: 1º a conferência sobe e some; 2º a coluna fecha e o grid cresce para a esquerda.
+    // Abrir é o inverso: 1º a coluna abre; 2º a conferência desce e aparece. (o `delay` faz a sequência)
     corpo = (
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
-        <div className="lg:sticky lg:top-20">
-          {conferencia}
+      <div className={`grid gap-y-5 transition-[grid-template-columns,column-gap] duration-300 ease-in-out lg:items-start ${
+        conferenciaAberta
+          ? 'delay-0 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-x-5'
+          : 'delay-200 lg:grid-cols-[0rem_minmax(0,1fr)] lg:gap-x-0'}`}>
+        <div className={`overflow-hidden lg:sticky lg:top-20 ${conferenciaAberta ? '' : 'max-lg:hidden'}`} inert={!conferenciaAberta}>
+          <div className={`transition-[opacity,translate] duration-300 ease-in-out lg:w-80 ${
+            conferenciaAberta
+              ? 'translate-y-0 opacity-100 delay-200'
+              : 'delay-0 lg:-translate-y-8 lg:opacity-0'}`}>
+            {conferencia}
+          </div>
         </div>
 
         <div className="min-w-0 space-y-4">
@@ -305,6 +377,11 @@ export default function Faturas() {
               <FiPlus size={16} /> Criar fatura
             </Button>
           )}
+          {fatura && fatura.fechada && (
+            <Button className="min-[420px]:col-span-2 sm:col-auto" onPress={abrirProxima}>
+              <FiPlus size={16} /> Abrir próxima fatura
+            </Button>
+          )}
           {fatura && !fatura.fechada && (
             <Button className="min-[420px]:col-span-2 sm:col-auto" variant="secondary" onPress={abrirNovoLancamento}>
               <FiPlus size={16} /> Lançar gasto
@@ -334,6 +411,11 @@ export default function Faturas() {
             state={modalExcluir}
             lancamento={lancamentoExcluindo}
             onExcluido={carregarFatura}
+          />
+          <ProximaFaturaModal
+            state={modalProxima}
+            competenciaProxima={fatura && { nome: nomeCompetencia(proximaCompetencia(fatura.competencia)) }}
+            onCriar={() => { modalProxima.close(); abrirProxima(); }}
           />
         </>
       )}

@@ -1,19 +1,142 @@
-// Lançamentos paginados (10 por página): Table no desktop, cards no celular.
-// Status e categoria são editáveis direto na linha; editar e excluir ficam nas ações.
+// Lançamentos paginados: Table no desktop, cards no celular.
+// Pesquisa única acima da lista. Aceita texto livre e filtros por coluna no formato "Coluna: valor",
+// separados por ";" (ex.: "Portador: Gabriel; Categoria: mercado; posto").
+// No desktop cada título de coluna abre um menu: filtrar (grava "Coluna: valor" na pesquisa) e ordenar.
+// No celular a ordenação é um select. Status e categoria são editáveis na linha.
 import { useState } from 'react';
-import { Table, Card, Chip, Select, ListBox, Pagination, Input, Button } from '@heroui/react';
-import { FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { Table, Card, Chip, Select, ListBox, Pagination, Button, SearchField, Popover, Input } from '@heroui/react';
+import { FiEdit2, FiTrash2, FiChevronDown, FiArrowUp, FiArrowDown, FiFilter, FiX } from 'react-icons/fi';
 import { STATUS } from '../../../utils/statusFatura';
 import { moeda, dataCurta, properCase } from '../../../utils/formatar';
 import useIsMobile from '../../../hooks/useIsMobile';
+import Seletor from '../../../components/Seletor';
 
-const POR_PAGINA_PADRAO = 10;
-const POR_PAGINA_MAX = 200;
+const OPCOES_POR_PAGINA = [10, 25, 50, 100, 200].map((n) => ({ id: String(n), nome: `${n} por página` }));
 const SEM_CATEGORIA = 'nenhum';
+const ORDEM_PADRAO = { column: 'data', direction: 'ascending' };
+
+// Colunas que filtram e ordenam. `numerica` muda o texto do menu (menor/maior em vez de A-Z).
+const COLUNAS = [
+  { id: 'data', rotulo: 'Data', numerica: true },
+  { id: 'estabelecimento', rotulo: 'Estabelecimento' },
+  { id: 'portador', rotulo: 'Portador' },
+  { id: 'valor', rotulo: 'Valor', numerica: true },
+  { id: 'parcela', rotulo: 'Parcela' },
+  { id: 'categoria', rotulo: 'Categoria' },
+  { id: 'status', rotulo: 'Status' },
+];
+
+// Texto de cada coluna usado na pesquisa (o mesmo que aparece na tela, mais formatos úteis).
+const TEXTO_COLUNA = {
+  data: (tr) => `${dataCurta(tr.data)} ${tr.data}`,
+  estabelecimento: (tr) => tr.estabelecimento,
+  portador: (tr) => tr.portador,
+  valor: (tr) => `${moeda(tr.valor)} ${tr.valor.toFixed(2)} ${tr.valor.toFixed(2).replace('.', ',')}`,
+  parcela: (tr) => tr.parcela ?? '',
+  categoria: (tr) => (tr.categoria ? properCase(tr.categoria) : 'Sem categoria'),
+  status: (tr) => STATUS[tr.status]?.label ?? '',
+};
+
+// Tira acentos e deixa minúsculo para a pesquisa ('Farmácia' acha 'farmacia').
+const normalizar = (texto) =>
+  String(texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+// Lê a pesquisa: "Portador: Gabriel; posto" -> [{ coluna: 'portador', valor: 'Gabriel' }, { coluna: null, valor: 'posto' }]
+// `texto` é o pedaço original (usado para reescrever a pesquisa quando um filtro de coluna muda).
+function separarTermos(pesquisa) {
+  return pesquisa.split(';').map((pedaco) => pedaco.trim()).filter(Boolean).map((pedaco) => {
+    const posicaoDoisPontos = pedaco.indexOf(':');
+    if (posicaoDoisPontos > 0) {
+      const nomeColuna = normalizar(pedaco.slice(0, posicaoDoisPontos));
+      const colunaEncontrada = COLUNAS.find((col) => normalizar(col.rotulo) === nomeColuna);
+      if (colunaEncontrada) {
+        return { coluna: colunaEncontrada.id, valor: pedaco.slice(posicaoDoisPontos + 1).trim(), texto: pedaco };
+      }
+    }
+    return { coluna: null, valor: pedaco, texto: pedaco };
+  }).filter((parte) => parte.valor !== '');
+}
+
+// Título da coluna com menu: campo "Filtrar por X" (Enter aplica) e ordenação.
+function MenuColuna({ coluna, ordem, filtroAtual, onOrdenar, onFiltrar }) {
+  const [aberto, setAberto] = useState(false);
+  const [textoFiltro, setTextoFiltro] = useState(filtroAtual);
+  const ordenadaPorEsta = ordem.column === coluna.id;
+
+  // Ao abrir, o campo mostra o filtro que já está na pesquisa.
+  const mudarAberto = (abrir) => {
+    if (abrir) setTextoFiltro(filtroAtual);
+    setAberto(abrir);
+  };
+
+  const aplicar = (valor) => {
+    onFiltrar(valor);
+    setAberto(false);
+  };
+
+  const ordenar = (direcao) => {
+    onOrdenar(direcao);
+    setAberto(false);
+  };
+
+  return (
+    <Popover isOpen={aberto} onOpenChange={mudarAberto}>
+      <Button variant="ghost" size="sm" className="-ml-2 h-7 gap-1 px-2 font-medium">
+        {coluna.rotulo}
+        {filtroAtual && <FiFilter size={12} className="text-accent" aria-label="filtrada" />}
+        {ordenadaPorEsta && (ordem.direction === 'ascending' ? <FiArrowUp size={12} /> : <FiArrowDown size={12} />)}
+        <FiChevronDown size={12} className="text-muted" />
+      </Button>
+      <Popover.Content placement="bottom start" className="w-64">
+        <Popover.Dialog aria-label={`Opções da coluna ${coluna.rotulo}`} className="space-y-1 p-2">
+          <form onSubmit={(e) => { e.preventDefault(); aplicar(textoFiltro); }} className="flex gap-1">
+            <Input
+              autoFocus aria-label={`Filtrar por ${coluna.rotulo}`} placeholder={`Filtrar por ${coluna.rotulo}...`}
+              value={textoFiltro} onChange={(e) => setTextoFiltro(e.target.value)} className="flex-1"
+            />
+            {filtroAtual && (
+              <Button isIconOnly size="sm" variant="ghost" aria-label="Tirar filtro" onPress={() => aplicar('')}>
+                <FiX size={14} />
+              </Button>
+            )}
+          </form>
+          <div className="border-t border-separator pt-1">
+            <Button variant="ghost" size="sm" className="w-full justify-start" onPress={() => ordenar('ascending')}>
+              <FiArrowUp size={14} /> {coluna.numerica ? 'Menor → maior' : 'Ordenar A → Z'}
+            </Button>
+            <Button variant="ghost" size="sm" className="w-full justify-start" onPress={() => ordenar('descending')}>
+              <FiArrowDown size={14} /> {coluna.numerica ? 'Maior → menor' : 'Ordenar Z → A'}
+            </Button>
+          </div>
+        </Popover.Dialog>
+      </Popover.Content>
+    </Popover>
+  );
+}
+
+// Ordenação no celular (no desktop é o menu do título da coluna).
+const OPCOES_ORDEM = [
+  { id: 'data:ascending', nome: 'Data (mais antiga)' },
+  { id: 'data:descending', nome: 'Data (mais recente)' },
+  { id: 'valor:descending', nome: 'Maior valor' },
+  { id: 'valor:ascending', nome: 'Menor valor' },
+  { id: 'estabelecimento:ascending', nome: 'Estabelecimento (A-Z)' },
+];
 
 // Cores de cada status (ponto e texto). Classes escritas por extenso para o Tailwind gerar todas.
 const COR_PONTO = { warning: 'bg-warning', success: 'bg-success', accent: 'bg-accent' };
 const COR_TEXTO = { warning: 'text-warning', success: 'text-success', accent: 'text-accent' };
+
+// Valor usado para ordenar cada coluna.
+const VALOR_ORDENACAO = {
+  data: (tr) => tr.data,
+  estabelecimento: (tr) => tr.estabelecimento.toLowerCase(),
+  portador: (tr) => tr.portador.toLowerCase(),
+  valor: (tr) => tr.valor,
+  parcela: (tr) => tr.parcela ?? '',
+  categoria: (tr) => tr.categoria ?? '',
+  status: (tr) => STATUS[tr.status]?.label ?? '',
+};
 
 // Status editável na linha, com a cor do status (ponto + texto).
 function StatusSelect({ tr, onChange, desabilitado }) {
@@ -24,7 +147,7 @@ function StatusSelect({ tr, onChange, desabilitado }) {
       selectedKey={tr.status}
       isDisabled={desabilitado}
       onSelectionChange={(k) => onChange(tr.id, k)}
-      className="w-32"
+      className="w-36"
     >
       <Select.Trigger>
         <span className="flex items-center gap-2">
@@ -50,7 +173,7 @@ function StatusSelect({ tr, onChange, desabilitado }) {
   );
 }
 
-// Categoria editável na linha: lista as categorias do cadastro (a mesma do status: dropdown).
+// Categoria editável na linha: lista as categorias do cadastro.
 function CategoriaSelect({ tr, categorias, onChange, desabilitado }) {
   const itens = [
     { id: SEM_CATEGORIA, nome: 'Sem categoria' },
@@ -62,7 +185,7 @@ function CategoriaSelect({ tr, categorias, onChange, desabilitado }) {
       selectedKey={tr.categoria ?? SEM_CATEGORIA}
       isDisabled={desabilitado}
       onSelectionChange={(k) => onChange(tr.id, k === SEM_CATEGORIA ? '' : k)}
-      className="w-36"
+      className="w-40"
     >
       <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
       <Select.Popover>
@@ -92,73 +215,152 @@ function AcoesLancamento({ tr, desabilitado, onEditar, onExcluir }) {
   );
 }
 
-// Campo "itens por página": o texto pode ficar vazio enquanto digita; vazio/inválido = padrão (10).
-function PorPagina({ valor, onChange }) {
-  return (
-    <label className="flex items-center gap-2 text-sm text-muted">
-      Itens por página
-      <Input
-        aria-label="Itens por página" type="number" min={1} max={POR_PAGINA_MAX} inputMode="numeric"
-        value={valor} onChange={(e) => onChange(e.target.value)} className="w-20"
-      />
-    </label>
-  );
+// Páginas visíveis: primeira, última e vizinhas da atual; o resto vira '…'.
+// Ex.: atual 7 de 13 -> [1, '…', 6, 7, 8, '…', 13]
+function paginasVisiveis(atual, total) {
+  const paginas = [];
+  for (let numero = 1; numero <= total; numero += 1) {
+    const ehPonta = numero === 1 || numero === total;
+    const ehVizinha = Math.abs(numero - atual) <= 1;
+    if (ehPonta || ehVizinha) {
+      paginas.push(numero);
+    } else if (paginas[paginas.length - 1] !== '…') {
+      paginas.push('…');
+    }
+  }
+  return paginas;
 }
 
-function Paginacao({ pagina, total, onPagina, de, ate, quantidade }) {
-  if (total <= 1) return <span className="text-sm text-muted">{quantidade} itens</span>;
+// Rodapé: resumo, páginas e itens por página. No celular só anterior / "3 de 13" / próxima.
+function Rodape({ pagina, totalPaginas, onPagina, de, ate, quantidade, porPagina, onPorPagina, compacto }) {
   return (
-    <Pagination size="sm" className="flex-1">
-      <Pagination.Summary>{de} a {ate} de {quantidade}</Pagination.Summary>
-      <Pagination.Content>
-        <Pagination.Item>
-          <Pagination.Previous isDisabled={pagina === 1} onPress={() => onPagina(pagina - 1)}>
-            <Pagination.PreviousIcon />Anterior
-          </Pagination.Previous>
-        </Pagination.Item>
-        {Array.from({ length: total }, (_, i) => i + 1).map((p) => (
-          <Pagination.Item key={p}>
-            <Pagination.Link isActive={p === pagina} onPress={() => onPagina(p)}>{p}</Pagination.Link>
-          </Pagination.Item>
-        ))}
-        <Pagination.Item>
-          <Pagination.Next isDisabled={pagina === total} onPress={() => onPagina(pagina + 1)}>
-            Próxima<Pagination.NextIcon />
-          </Pagination.Next>
-        </Pagination.Item>
-      </Pagination.Content>
-    </Pagination>
+    <div className="flex w-full flex-wrap items-center justify-between gap-3">
+      <span className="whitespace-nowrap text-sm text-muted tabular-nums">
+        {quantidade === 0 ? 'Nenhum item' : `${de}–${ate} de ${quantidade}`}
+      </span>
+
+      {totalPaginas > 1 && (
+        <Pagination size="sm" className="w-auto">
+          <Pagination.Content>
+            <Pagination.Item>
+              <Pagination.Previous isDisabled={pagina === 1} onPress={() => onPagina(pagina - 1)} aria-label="Página anterior">
+                <Pagination.PreviousIcon />
+              </Pagination.Previous>
+            </Pagination.Item>
+
+            {compacto ? (
+              <Pagination.Item>
+                <span className="px-2 text-sm tabular-nums">{pagina} de {totalPaginas}</span>
+              </Pagination.Item>
+            ) : (
+              paginasVisiveis(pagina, totalPaginas).map((item, posicao) => (
+                <Pagination.Item key={item === '…' ? `reticencias-${posicao}` : item}>
+                  {item === '…'
+                    ? <Pagination.Ellipsis />
+                    : <Pagination.Link isActive={item === pagina} onPress={() => onPagina(item)}>{item}</Pagination.Link>}
+                </Pagination.Item>
+              ))
+            )}
+
+            <Pagination.Item>
+              <Pagination.Next isDisabled={pagina === totalPaginas} onPress={() => onPagina(pagina + 1)} aria-label="Próxima página">
+                <Pagination.NextIcon />
+              </Pagination.Next>
+            </Pagination.Item>
+          </Pagination.Content>
+        </Pagination>
+      )}
+
+      <Seletor rotulo="Itens por página" itens={OPCOES_POR_PAGINA} valor={String(porPagina)}
+        onChange={(valor) => onPorPagina(Number(valor))} className="w-40" />
+    </div>
   );
 }
 
 export default function TransacoesLista({ transacoes, categorias = [], onStatus, onCategoria, onEditar, onExcluir, bloqueada }) {
   const isMobile = useIsMobile();
   const [pagina, setPagina] = useState(1);
-  const [textoPorPagina, setTextoPorPagina] = useState(String(POR_PAGINA_PADRAO));
+  const [porPagina, setPorPagina] = useState(10);
+  const [pesquisa, setPesquisa] = useState('');
+  const [ordem, setOrdem] = useState(ORDEM_PADRAO);
 
-  const digitado = parseInt(textoPorPagina, 10);
-  const porPagina = Number.isFinite(digitado) && digitado >= 1
-    ? Math.min(digitado, POR_PAGINA_MAX)
-    : POR_PAGINA_PADRAO;
+  // Qualquer filtro novo volta para a 1ª página.
+  const filtrar = (definir) => (valor) => { definir(valor); setPagina(1); };
 
-  const totalPaginas = Math.max(1, Math.ceil(transacoes.length / porPagina));
+  // Filtro do menu da coluna: grava "Coluna: valor" na pesquisa (troca o da mesma coluna, se já existir).
+  const aplicarFiltroColuna = (idColuna, valor) => {
+    const rotulo = COLUNAS.find((col) => col.id === idColuna).rotulo;
+    const outrosTermos = separarTermos(pesquisa).filter((parte) => parte.coluna !== idColuna).map((parte) => parte.texto);
+    const novoTermo = valor.trim() ? [`${rotulo}: ${valor.trim()}`] : [];
+    setPesquisa([...outrosTermos, ...novoTermo].join('; '));
+    setPagina(1);
+  };
+
+  // 1º filtra pela pesquisa, 2º ordena, 3º pagina.
+  const termos = separarTermos(pesquisa);
+  const filtradas = transacoes.filter((tr) => termos.every((parte) => {
+    const textoColuna = parte.coluna
+      ? TEXTO_COLUNA[parte.coluna](tr)
+      : Object.values(TEXTO_COLUNA).map((ler) => ler(tr)).join(' ');
+    return normalizar(textoColuna).includes(normalizar(parte.valor));
+  }));
+
+  const lerValor = VALOR_ORDENACAO[ordem.column] ?? VALOR_ORDENACAO.data;
+  const sentido = ordem.direction === 'descending' ? -1 : 1;
+  const ordenadas = [...filtradas].sort((a, b) => {
+    const valorA = lerValor(a);
+    const valorB = lerValor(b);
+    if (valorA < valorB) return -1 * sentido;
+    if (valorA > valorB) return 1 * sentido;
+    return 0;
+  });
+
+  const totalPaginas = Math.max(1, Math.ceil(ordenadas.length / porPagina));
   const atual = Math.min(pagina, totalPaginas);
   const inicio = (atual - 1) * porPagina;
-  const itens = transacoes.slice(inicio, inicio + porPagina);
-  const pag = (
-    <div className="flex w-full flex-wrap items-center justify-between gap-3">
-      <Paginacao
-        pagina={atual} total={totalPaginas} onPagina={setPagina}
-        de={transacoes.length ? inicio + 1 : 0} ate={inicio + itens.length} quantidade={transacoes.length}
-      />
-      <PorPagina valor={textoPorPagina} onChange={(v) => { setTextoPorPagina(v); setPagina(1); }} />
+  const itens = ordenadas.slice(inicio, inicio + porPagina);
+  const temFiltro = termos.length > 0;
+
+  // Valor atual do filtro de cada coluna (para abrir o menu já preenchido).
+  const filtroDaColuna = (idColuna) => termos.find((parte) => parte.coluna === idColuna)?.valor ?? '';
+
+  const barraFiltros = (
+    <div className="space-y-2">
+      <SearchField aria-label="Pesquisar lançamentos" value={pesquisa} onChange={filtrar(setPesquisa)} fullWidth>
+        <SearchField.Group>
+          <SearchField.SearchIcon />
+          <SearchField.Input placeholder="Pesquisar... ou Coluna: valor (ex.: Portador: Gabriel; Categoria: mercado)" />
+          <SearchField.ClearButton />
+        </SearchField.Group>
+      </SearchField>
+
+      {isMobile && (
+        <Seletor rotulo="Ordenar" itens={OPCOES_ORDEM} valor={`${ordem.column}:${ordem.direction}`}
+          onChange={(valor) => { const [column, direction] = valor.split(':'); setOrdem({ column, direction }); }}
+          className="w-full" />
+      )}
     </div>
+  );
+
+  const rodape = (
+    <Rodape
+      pagina={atual} totalPaginas={totalPaginas} onPagina={setPagina}
+      de={ordenadas.length ? inicio + 1 : 0} ate={inicio + itens.length} quantidade={ordenadas.length}
+      porPagina={porPagina} onPorPagina={filtrar(setPorPagina)} compacto={isMobile}
+    />
+  );
+
+  const vazio = (
+    <p className="rounded-xl border border-dashed border-separator p-6 text-center text-sm text-muted">
+      Nenhum lançamento encontrado{temFiltro ? ' com esses filtros' : ''}.
+    </p>
   );
 
   if (isMobile) {
     return (
-      <div className="space-y-2">
-        {itens.map((tr) => (
+      <div className="space-y-3">
+        {barraFiltros}
+        {itens.length === 0 ? vazio : itens.map((tr) => (
           <Card key={tr.id}>
             <Card.Content className="gap-2">
               <div className="flex items-start justify-between gap-2">
@@ -179,42 +381,53 @@ export default function TransacoesLista({ transacoes, categorias = [], onStatus,
             </Card.Content>
           </Card>
         ))}
-        {pag}
+        {rodape}
       </div>
     );
   }
 
   return (
-    <Table>
-      <Table.ScrollContainer>
-        <Table.Content aria-label="Lançamentos da fatura" className="min-w-[720px]">
-          <Table.Header>
-            <Table.Column isRowHeader>Data</Table.Column>
-            <Table.Column>Estabelecimento</Table.Column>
-            <Table.Column>Portador</Table.Column>
-            <Table.Column>Valor</Table.Column>
-            <Table.Column>Parcela</Table.Column>
-            <Table.Column>Categoria</Table.Column>
-            <Table.Column>Status</Table.Column>
-            <Table.Column>Ações</Table.Column>
-          </Table.Header>
-          <Table.Body>
-            {itens.map((tr) => (
-              <Table.Row key={tr.id} id={tr.id}>
-                <Table.Cell>{dataCurta(tr.data)}</Table.Cell>
-                <Table.Cell className="max-w-44 truncate" title={tr.estabelecimento}>{tr.estabelecimento}</Table.Cell>
-                <Table.Cell className="whitespace-nowrap" title={tr.portador}>{tr.portador.split(' ')[0]}</Table.Cell>
-                <Table.Cell className="whitespace-nowrap tabular-nums">{moeda(tr.valor)}</Table.Cell>
-                <Table.Cell>{tr.parcela ?? '—'}</Table.Cell>
-                <Table.Cell><CategoriaSelect tr={tr} categorias={categorias} onChange={onCategoria} desabilitado={bloqueada} /></Table.Cell>
-                <Table.Cell><StatusSelect tr={tr} onChange={onStatus} desabilitado={bloqueada} /></Table.Cell>
-                <Table.Cell><AcoesLancamento tr={tr} desabilitado={bloqueada} onEditar={onEditar} onExcluir={onExcluir} /></Table.Cell>
-              </Table.Row>
-            ))}
-          </Table.Body>
-        </Table.Content>
-      </Table.ScrollContainer>
-      <Table.Footer>{pag}</Table.Footer>
-    </Table>
+    <div className="space-y-3">
+      {barraFiltros}
+      <Table>
+        <Table.ScrollContainer>
+          <Table.Content aria-label="Lançamentos da fatura" className="min-w-[760px]">
+            <Table.Header>
+              {COLUNAS.map((col, posicao) => (
+                <Table.Column key={col.id} id={col.id} isRowHeader={posicao === 0}>
+                  <MenuColuna
+                    coluna={col}
+                    ordem={ordem}
+                    filtroAtual={filtroDaColuna(col.id)}
+                    onOrdenar={(direction) => setOrdem({ column: col.id, direction })}
+                    onFiltrar={(valor) => aplicarFiltroColuna(col.id, valor)}
+                  />
+                </Table.Column>
+              ))}
+              <Table.Column id="acoes">Ações</Table.Column>
+            </Table.Header>
+            <Table.Body renderEmptyState={() => (
+              <p className="p-6 text-center text-sm text-muted">
+                Nenhum lançamento encontrado{temFiltro ? ' com esses filtros' : ''}.
+              </p>
+            )}>
+              {itens.map((tr) => (
+                <Table.Row key={tr.id} id={tr.id}>
+                  <Table.Cell>{dataCurta(tr.data)}</Table.Cell>
+                  <Table.Cell className="max-w-44 truncate" title={tr.estabelecimento}>{tr.estabelecimento}</Table.Cell>
+                  <Table.Cell className="whitespace-nowrap" title={tr.portador}>{tr.portador.split(' ')[0]}</Table.Cell>
+                  <Table.Cell className="whitespace-nowrap tabular-nums">{moeda(tr.valor)}</Table.Cell>
+                  <Table.Cell>{tr.parcela ?? '—'}</Table.Cell>
+                  <Table.Cell><CategoriaSelect tr={tr} categorias={categorias} onChange={onCategoria} desabilitado={bloqueada} /></Table.Cell>
+                  <Table.Cell><StatusSelect tr={tr} onChange={onStatus} desabilitado={bloqueada} /></Table.Cell>
+                  <Table.Cell><AcoesLancamento tr={tr} desabilitado={bloqueada} onEditar={onEditar} onExcluir={onExcluir} /></Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Content>
+        </Table.ScrollContainer>
+        <Table.Footer>{rodape}</Table.Footer>
+      </Table>
+    </div>
   );
 }

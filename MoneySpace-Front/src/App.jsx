@@ -16,6 +16,7 @@ import Login from './pages/Login/Login';
 import Welcome from './pages/Welcome/Welcome';
 import AppLayout from './components/Layout/AppLayout';
 import Faturas from './pages/Faturas/Faturas';
+import Relatorios from './pages/Relatorios/Relatorios';
 import EmBreve from './pages/EmBreve/EmBreve';
 import Usuarios from './pages/Usuarios/Usuarios';
 import Cartoes from './pages/Cartoes/Cartoes';
@@ -66,6 +67,7 @@ function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/faturas" element={<Faturas />} />
+          <Route path="/relatorios" element={<Relatorios />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/cadastros" element={<Cadastros />} />
           <Route path="/cadastros/usuarios" element={<Usuarios />} />

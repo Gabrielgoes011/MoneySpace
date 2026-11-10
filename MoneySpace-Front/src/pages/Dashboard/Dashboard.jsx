@@ -1,94 +1,116 @@
-// Painel principal. Tudo vem dos cadastros: usuários (quem gasta), categorias, cartões.
-// Os valores de gasto ficam em zero até existir a fatura importada (módulo de fatura ainda não existe).
-import { useEffect, useMemo, useState } from 'react';
-import { Spinner } from '@heroui/react';
+// Painel principal. Tudo vem de GET /dashboard (cartões, resumo, quem gasta e categorias).
+// Ao abrir, o back escolhe o cartão principal; trocar o cartão ou a competência recarrega o painel.
+import { useEffect, useState } from 'react';
+import { Spinner, toast } from '@heroui/react';
 import Seletor from '../../components/Seletor';
-import { listarCartoes } from '../../services/cartaoService';
-import { listarUsuarios } from '../../services/usuarioService';
-import { listarCategorias } from '../../services/categoriaService';
+import { buscarDashboard } from '../../services/dashboardService';
 import { properCase } from '../../utils/formatar';
-import { calcular } from '../Faturas/componentes/calculos';
 import ResumoCards from '../Faturas/componentes/ResumoCards';
 import { AnalisePortador, AnaliseCategoria } from '../Faturas/componentes/Analises';
 import CartoesDashboard from './componentes/CartoesDashboard';
 
 const TODOS_CARTOES = { id: 'todos', nome: 'Todos os cartões' };
 const NOME_SEM_CATEGORIA = 'Sem categoria';
-const QUANTIDADE_COMPETENCIAS = 6;
+const formatoMes = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+// '2026-10' -> 'Outubro de 2026'
+function nomeCompetencia(competencia) {
+  const [ano, mes] = competencia.split('-').map(Number);
+  const texto = formatoMes.format(new Date(Date.UTC(ano, mes - 1, 1)));
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
 
 export default function Dashboard() {
-  const [cartoes, setCartoes] = useState(null);
-  const [usuarios, setUsuarios] = useState([]);
-  const [categorias, setCategorias] = useState([]);
+  const [dados, setDados] = useState(null); // resposta do back
   const [erro, setErro] = useState('');
-  const [cartaoEscolhido, setCartaoEscolhido] = useState('todos');
+  const [carregando, setCarregando] = useState(false);
+  const [competencia, setCompetencia] = useState(''); // '' = padrão do back (fatura mais recente)
+  const [cartaoEscolhido, setCartaoEscolhido] = useState(''); // '' = padrão do back (cartão principal)
 
-  // Últimos 6 meses a partir de hoje, do mais recente para o mais antigo.
-  const competencias = useMemo(() => {
-    const formatoMes = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' });
+  // Trocar o cartão volta para a fatura mais recente dele.
+  const trocarCartao = (idCartao) => {
+    setCartaoEscolhido(idCartao);
+    setCompetencia('');
+  };
 
-    return Array.from({ length: QUANTIDADE_COMPETENCIAS }, (_, deslocamento) => {
-      const mes = new Date();
-      mes.setMonth(mes.getMonth() - deslocamento, 1);
-
-      const id = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, '0')}`;
-      const textoMes = formatoMes.format(mes);
-      return { id, nome: textoMes.charAt(0).toUpperCase() + textoMes.slice(1) };
-    });
-  }, []);
-
-  const [competencia, setCompetencia] = useState(competencias[0].id);
-
-  // Carrega cartões, membros e categorias dos cadastros.
+  // Busca o painel sempre que o cartão ou a competência mudam.
   useEffect(() => {
-    Promise.all([listarCartoes(), listarUsuarios(), listarCategorias()])
-      .then(([cartoesResposta, usuariosResposta, categoriasResposta]) => {
-        setCartoes(cartoesResposta.cartoes);
-        setUsuarios(usuariosResposta.usuarios);
-        setCategorias(categoriasResposta.categorias);
+    let cancelado = false;
+    setCarregando(true);
+
+    buscarDashboard(competencia || undefined, cartaoEscolhido || undefined)
+      .then((resposta) => { if (!cancelado) { setDados(resposta); setErro(''); } })
+      .catch((e) => {
+        if (cancelado) return;
+        if (dados) toast.danger(e.message);
+        else setErro(e.message);
       })
-      .catch((e) => setErro(e.message));
-  }, []);
+      .finally(() => { if (!cancelado) setCarregando(false); });
+
+    return () => { cancelado = true; };
+  }, [competencia, cartaoEscolhido]);
 
   if (erro) {
     return <p className="rounded-xl border border-dashed border-separator p-10 text-center text-danger">{erro}</p>;
   }
-  if (!cartoes) {
+  if (!dados) {
     return <div className="flex justify-center p-16"><Spinner /></div>;
   }
 
-  // Sem fatura importada ainda: resumo zerado, mas com as linhas reais de quem e de quais categorias.
-  const resumo = calcular([], 0);
-  const gastosPorPortador = usuarios.map((usuario) => ({ nome: usuario.nome, total: 0, pct: 0, qtd: 0 }));
-  const gastosPorCategoria = [
-    ...categorias.map((categoria) => ({ nome: properCase(categoria.valor), total: 0, pct: 0, qtd: 0 })),
-    { nome: NOME_SEM_CATEGORIA, total: 0, pct: 0, qtd: 0 },
-  ];
-
+  // Cartão exibido: o escolhido pelo usuário ou o que o back devolveu como padrão.
+  const cartaoAtual = cartaoEscolhido || dados.cartaoId;
   const opcoesCartao = [
     TODOS_CARTOES,
-    ...cartoes.map((cartao) => ({ id: cartao.id, nome: `${cartao.nome} ••${cartao.final}` })),
+    ...dados.cartoes.map((cartao) => ({ id: cartao.id, nome: `${cartao.nome} ••${cartao.final}` })),
   ];
-  const cartoesFiltrados = cartaoEscolhido === 'todos'
-    ? cartoes
-    : cartoes.filter((cartao) => cartao.id === cartaoEscolhido);
+  // Competências com fatura; garante que a exibida esteja na lista (ex.: mês atual sem fatura).
+  const listaCompetencias = dados.competencias.includes(dados.competencia)
+    ? dados.competencias
+    : [dados.competencia, ...dados.competencias];
+  const opcoesCompetencia = listaCompetencias.map((item) => ({ id: item, nome: nomeCompetencia(item) }));
+
+  const cartoesFiltrados = cartaoAtual === 'todos'
+    ? dados.cartoes
+    : dados.cartoes.filter((cartao) => cartao.id === cartaoAtual);
+
+  // Resumo no formato dos cards (meta = o que deveria estar na reserva: na hora + pendente).
+  const meta = dados.resumo.pago + dados.resumo.pendente;
+  const resumo = {
+    bruto: dados.resumo.total,
+    pago: dados.resumo.pago,
+    pendente: dados.resumo.pendente,
+    fechamento: dados.resumo.fechamento,
+    meta,
+    diferenca: dados.resumo.saldoReserva - meta,
+  };
+
+  const gastosPorPortador = dados.portadores.map((portador) => ({
+    nome: portador.nome, total: portador.total, pct: portador.pct, qtd: portador.qtd,
+  }));
+  const gastosPorCategoria = [
+    ...dados.categorias.map((categoria) => ({
+      nome: properCase(categoria.nome), total: categoria.total, pct: categoria.pct, qtd: categoria.qtd,
+    })),
+    { nome: NOME_SEM_CATEGORIA, total: dados.semCategoria.total, pct: dados.semCategoria.pct, qtd: dados.semCategoria.qtd },
+  ];
+  const semLancamentos = dados.resumo.total === 0;
 
   return (
     <div className="space-y-5 md:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Início</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">Início {carregando && <Spinner size="sm" />}</h1>
           <p className="text-sm text-muted">Visão geral dos cartões da família</p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:w-auto sm:flex-wrap">
-          <Seletor rotulo="Cartão" itens={opcoesCartao} valor={cartaoEscolhido} onChange={setCartaoEscolhido} />
-          <Seletor rotulo="Competência" itens={competencias} valor={competencia} onChange={setCompetencia} />
+          <Seletor rotulo="Cartão" itens={opcoesCartao} valor={cartaoAtual} onChange={trocarCartao} />
+          <Seletor rotulo="Competência" itens={opcoesCompetencia} valor={dados.competencia} onChange={setCompetencia} />
         </div>
       </div>
 
-      <p className="text-sm text-muted">
-        Sem lançamentos ainda: os valores aparecem quando a fatura for importada.
-      </p>
+      {semLancamentos && (
+        <p className="text-sm text-muted">Sem lançamentos neste período para o cartão escolhido.</p>
+      )}
 
       <ResumoCards c={resumo} />
 

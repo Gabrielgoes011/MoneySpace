@@ -1,5 +1,5 @@
 import { Card, InputGroup, Button, Chip } from '@heroui/react';
-import { FiLock } from 'react-icons/fi';
+import { FiLock, FiUnlock } from 'react-icons/fi';
 import { moeda } from '../../../utils/formatar';
 
 const Linha = ({ rotulo, valor, forte }) => (
@@ -10,7 +10,7 @@ const Linha = ({ rotulo, valor, forte }) => (
 );
 
 // `saldo` é o texto digitado; `onSaldo` atualiza a tela; `onSalvarSaldo` grava no banco ao sair do campo.
-export default function ConferenciaReserva({ c, saldo, onSaldo, onSalvarSaldo, fechada, onFechar }) {
+export default function ConferenciaReserva({ c, saldo, onSaldo, onSalvarSaldo, fechada, onFechar, onAbrir }) {
   const coberta = c.diferenca >= 0;
   return (
     <Card>
@@ -49,9 +49,15 @@ export default function ConferenciaReserva({ c, saldo, onSaldo, onSalvarSaldo, f
           <Linha forte rotulo="Total líquido do mês" valor={moeda(c.liquido)} />
         </div>
 
-        <Button className="mt-3" variant={fechada ? 'secondary' : 'primary'} isDisabled={fechada} onPress={onFechar}>
-          <FiLock size={16} /> {fechada ? 'Fatura fechada' : 'Fechar fatura'}
-        </Button>
+        {fechada ? (
+          <Button className="mt-3" variant="secondary" onPress={onAbrir}>
+            <FiUnlock size={16} /> Abrir para ajustes
+          </Button>
+        ) : (
+          <Button className="mt-3" onPress={onFechar}>
+            <FiLock size={16} /> Fechar fatura
+          </Button>
+        )}
       </Card.Content>
     </Card>
   );

@@ -331,8 +331,29 @@ async function excluirLancamentoRepository(db, idTransacao) {
 }
 //#endregion
 
+//#region => Query para reabrir a fatura
+//volta a fatura para aberta (só se estiver fechada) e limpa a data de fechamento
+async function abrirFaturaRepository(db, idFatura) {
+
+    //executa a consulta SQL que muda o status de volta para ABERTA
+    const resultado = await db.query(`
+        UPDATE fatura_corpo
+        SET status_fat = 'ABERTA', dt_fechamento = NULL
+        WHERE id_fatura = $1
+        AND id_familia = current_setting('app.current_familia_id', true)::uuid
+        AND status_fat = 'FECHADA'
+        RETURNING id_fatura, status_fat`,
+        [idFatura]
+    );
+
+    //retorna a fatura reaberta
+    return resultado.rows[0];
+}
+//#endregion
+
 //#region => exportação das funções
 export {
+    abrirFaturaRepository,
     atualizarLancamentoRepository,
     excluirLancamentoRepository,
     listarFaturasCartaoRepository,

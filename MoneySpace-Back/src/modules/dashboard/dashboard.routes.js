@@ -12,6 +12,7 @@ const router = Router();
 
 // Painel inicial (só leitura)
 router.get('/dashboard', verificaToken, rlsMiddleware, buscarDashboard);
-//query: competencia=AAAA-MM (padrão = mês atual), cartaoId=<uuid> ou todos (padrão)
+//query: competencia=AAAA-MM (padrão = fatura mais recente do cartão), cartaoId=<uuid> ou todos (padrão = cartão principal)
+//resposta: { competencia, cartaoId, competencias, cartoes, resumo, portadores, categorias, semCategoria }
 
 export default router;
