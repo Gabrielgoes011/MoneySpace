@@ -56,8 +56,15 @@ Os `.env*` **não** são commitados. Cadastre estas variáveis no painel da Disc
 | `NODE_ENV`     | `production`                                         | sim         |
 | `DATABASE_URL` | string de conexão do Postgres (Neon)                | sim         |
 | `JWT_SECRET`   | segredo forte e único (não reutilizar o de dev)     | sim         |
-| `PORT`         | não precisa — o código já usa 8080 por padrão       | não         |
+| `PORT`         | NÃO definir (o código usa 8080). Se definir, tem que ser `8080` | não |
 | `CORS_ORIGIN`  | só se outro domínio for consumir a API              | não         |
+
+> ⚠️ **Sintoma de `NODE_ENV` ausente/errado:** o log do app mostra `Ambiente: DEVELOPMENT` e
+> `porta 3000`, e o site responde **502 Bad Gateway**. A Discloud encaminha para a porta
+> **8080**; se o app subir em outra porta (ex.: `PORT=3000` vindo de um `.env.development`
+> ou do painel), o proxy não o encontra. O log correto mostra `Ambiente: PRODUCTION` e `porta 8080`.
+>
+> O endereço do app é `https://moneyspace.discloud.dev` (domínio `.dev`, não `.app`).
 
 > Front (`VITE_*`) é build-time, resolvido no `npm run build` local. NÃO vai no
 > painel. Em produção o front usa `/api` relativo (mesmo domínio), então não precisa
@@ -68,7 +75,7 @@ Os `.env*` **não** são commitados. Cadastre estas variáveis no painel da Disc
 ```ini
 NAME=MoneySpace
 TYPE=site
-ID=moneyspace                 # subdomínio -> moneyspace.discloud.app
+ID=moneyspace                 # subdomínio -> moneyspace.discloud.dev
 MAIN=MoneySpace-Back/server.js
 RAM=800
 VERSION=latest

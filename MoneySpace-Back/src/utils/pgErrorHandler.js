@@ -5,11 +5,14 @@
 // para o usuário final, sem expor detalhes internos da estrutura do banco.
 // Opcional neste template, só é útil quando o banco estiver ligado.
 
+//código do Postgres para violação de UNIQUE (ex.: e-mail ou CPF repetido)
+const CODIGO_UNIQUE_VIOLATION = '23505';
+
 const pgErrorMessages = {
     // ==========================================
     // CLASSE 23: VIOLAÇÕES DE INTEGRIDADE (Os mais comuns no dia a dia)
     // ==========================================
-    '23505': 'Já existe um registro com estes dados informados.', // unique_violation (Ex: email repetido)
+    [CODIGO_UNIQUE_VIOLATION]: 'Já existe um registro com estes dados informados.', // unique_violation (Ex: email repetido)
     '23503': 'Esta ação não é permitida porque o registro está vinculado a outra informação no sistema.', // foreign_key_violation (Ex: apagar fatura que tem movimentações)
     '23502': 'Um ou mais campos obrigatórios não foram preenchidos.', // not_null_violation (Ex: mandou nulo onde não podia)
     '23514': 'Os dados informados não cumprem as regras de validação do sistema.', // check_violation (Ex: valor negativo onde o banco só aceita positivo)
@@ -83,4 +86,4 @@ function handleDbError(error, defaultMessage = 'Ocorreu um erro inesperado. Tent
 }
 
 export default handleDbError;
-export { handleDbError };
+export { handleDbError, CODIGO_UNIQUE_VIOLATION };

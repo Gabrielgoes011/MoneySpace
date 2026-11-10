@@ -109,7 +109,7 @@ export default function AppLayout() {
           </aside>
         )}
 
-        <main className={`mx-auto w-full max-w-6xl ${isMobile ? 'p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))]' : 'p-8'}`}><Outlet /></main>
+        <main className={`mx-auto w-full max-w-7xl ${isMobile ? 'p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))]' : 'p-8'}`}><Outlet /></main>
       </div>
 
       {/* ── Barra inferior (celular) ─────────────────────────── */}

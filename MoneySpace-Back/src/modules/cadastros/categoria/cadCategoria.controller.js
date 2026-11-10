@@ -1,7 +1,7 @@
 // ========================================
 // CONTROLLER: CADASTRO DE CATEGORIAS
 // ========================================
-// Arquitetura de 2 camadas: o controller cuida de req/res E da lógica; o SQL
+// Arquitetura de 2 camadas: o controller cuida de req/res E das regras de negócio; o SQL
 // fica no repository. Categoria = linha da tabela GLOBAL `utilitario`
 // com tipo = 'categoria' (vale para todas as famílias).
 //
@@ -10,34 +10,21 @@
 //   - criar:  só o dono do app (is_master), porque a tabela é global
 //
 // Valor sempre gravado em minúsculo, sem espaços sobrando.
-// Convenção: todo helper interno começa com "_" e NÃO é exportado. Helper só existe
-// se for usado mais de uma vez; uso único fica inline dentro da função.
+// Regras de negócio ficam DENTRO de cada função (sem helper).
 
 import httpResponse from '../../../utils/httpResponse.js';
-import pgErrorHandler from '../../../utils/pgErrorHandler.js';
+import pgErrorHandler, { CODIGO_UNIQUE_VIOLATION } from '../../../utils/pgErrorHandler.js';
 import { buscarPapelRepository } from '../usuario/cadUsuario.Repositories.js';
 import {
   listarCategoriasRepository,
   criarCategoriaRepository
 } from './cadCategoria.Repositories.js';
 
-//#region => Constantes
-//código do Postgres para violação de UNIQUE (categoria repetida)
-const PG_UNIQUE_VIOLATION = '23505';
-//#endregion
-
-//#region => Helpers
-//o papel informado é de dono do app? (usado em listar e cadastrar)
-function _ehMaster(papel) {
-  return !!papel && papel.is_master === true;
-}
-//#endregion
-
 //#region => listar categorias
 //resposta: { categorias: [...], pode_editar: boolean }
 async function listarCategorias(req, res) {
   try {
-    //busca as categorias e o papel de quem chamou
+    //1º passo: busca as categorias e o papel de quem chamou
     const [
       categorias,
       papelSolicitante
@@ -46,10 +33,13 @@ async function listarCategorias(req, res) {
       buscarPapelRepository(req.db, req.user.id)
     ]);
 
+    //2º passo: só o dono do app pode editar categorias
+    const podeEditar = papelSolicitante?.is_master === true;
+
     //retorna os resultados da consulta em formato JSON
     return httpResponse.success(res, 'Categorias listadas com sucesso!', {
       categorias,
-      pode_editar: _ehMaster(papelSolicitante)
+      pode_editar: podeEditar
     });
 
   } catch (error) {
@@ -67,22 +57,28 @@ async function criarCategoria(req, res) {
     //1º passo: só o dono do app cadastra (a tabela é global)
     const papelSolicitante = await buscarPapelRepository(req.db, req.user.id);
 
-    if (!_ehMaster(papelSolicitante)) {
+    if (papelSolicitante?.is_master !== true) {
       return httpResponse.forbidden(res, 'Apenas o dono do app pode cadastrar categorias.');
     }
 
-    //2º passo: normaliza (minúsculo, sem espaços sobrando) e valida o tamanho
-    const valor = String(req.body?.valor ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+    //2º passo: recebe os dados do body
+    const dados = {
+      valor: req.body.valor
+    };
 
-    if (valor.length < 2) {
+    //3º passo: normaliza (minúsculo, sem espaços sobrando)
+    const valorNormalizado = String(dados.valor ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+    //4º passo: valida o tamanho
+    if (valorNormalizado.length < 2) {
       return httpResponse.validationError(res, 'Informe a categoria (mínimo 2 caracteres).');
     }
-    if (valor.length > 50) {
+    if (valorNormalizado.length > 50) {
       return httpResponse.validationError(res, 'A categoria deve ter no máximo 50 caracteres.');
     }
 
-    //3º passo: grava a categoria
-    const categoriaCriada = await criarCategoriaRepository(req.db, 'categoria', valor);
+    //5º passo: grava a categoria
+    const categoriaCriada = await criarCategoriaRepository(req.db, 'categoria', valorNormalizado);
 
     //retorna a categoria criada
     return httpResponse.success(res, 'Categoria cadastrada com sucesso!', { categoria: categoriaCriada }, 201);
@@ -91,7 +87,7 @@ async function criarCategoria(req, res) {
     console.error('Erro ao cadastrar categoria na etapa do controller:', error);
 
     //categoria já cadastrada -> 409
-    if (error.code === PG_UNIQUE_VIOLATION) {
+    if (error.code === CODIGO_UNIQUE_VIOLATION) {
       return httpResponse.conflict(res, 'Esta categoria já está cadastrada.');
     }
     const secureMessage = pgErrorHandler(error, 'Erro ao cadastrar a categoria.');

@@ -2,20 +2,22 @@
 // CONTROLLER: CADASTRO DE USUÁRIOS (da família)
 // ========================================
 // Arquitetura de 2 camadas (igual a login/família): o controller cuida de
-// req/res E da lógica; o SQL fica no repository. Usa `req.db` (transação com
-// contexto de RLS aberta pelo rlsMiddleware, que roda DEPOIS do verificaToken).
+// req/res E das regras de negócio; o SQL fica no repository. Usa `req.db`
+// (transação com contexto de RLS aberta pelo rlsMiddleware, que roda DEPOIS do verificaToken).
 //
-// Autorização (o JWT ainda não carrega `role`): o papel de quem chama é lido do
-// banco a cada request.
+// Autorização (o JWT ainda não carrega `role`): o papel de quem chama é lido do banco.
 //   - listar:           qualquer membro da família
 //   - criar / editar:   só ADMIN (ou master)
 //   - editar um master: só outro master
 //
-// Convenção: todo helper interno começa com "_" e NÃO é exportado.
+// Regras de negócio ficam DENTRO de cada função (sem helper). Helper `_` só para
+// transformação técnica. Algoritmo genérico (CPF) fica em utils/cpf.js.
+// Body: sempre desestruturado em `dados` com campos explícitos (padrão do projeto).
 
 import bcrypt from 'bcrypt';
 import httpResponse from '../../../utils/httpResponse.js';
-import pgErrorHandler from '../../../utils/pgErrorHandler.js';
+import pgErrorHandler, { CODIGO_UNIQUE_VIOLATION } from '../../../utils/pgErrorHandler.js';
+import { validarCpf } from '../../../utils/cpf.js';
 import {
   buscarFamiliaAtualRepository,
   listarUsuariosRepository,
@@ -30,132 +32,27 @@ const PERFIS_VALIDOS = ['ADMIN', 'MEMBRO'];
 const SENHA_TAMANHO_MINIMO = 6;
 const SALT_ROUNDS_BCRYPT = 10;
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-//código do Postgres para violação de UNIQUE (e-mail ou CPF repetido)
-const PG_UNIQUE_VIOLATION = '23505';
-//#endregion
-
-//#region => Helpers: normalização
-//nome sem espaços nas pontas
-function _normalizarNome(valor) {
-  return String(valor ?? '').trim();
-}
-
-//e-mail sem espaços e em minúsculas (login é case-insensitive)
-function _normalizarEmail(valor) {
-  return String(valor ?? '').trim().toLowerCase();
-}
-
-//CPF só com dígitos (remove pontos, traço e espaços)
-function _normalizarCpf(valor) {
-  return String(valor ?? '').replace(/\D/g, '');
-}
-
-//gera o hash bcrypt da senha (nunca grava a senha pura)
-async function _gerarHashSenha(senha) {
-  return bcrypt.hash(String(senha), SALT_ROUNDS_BCRYPT);
-}
-//#endregion
-
-//#region => Helpers: validação
-//calcula um dígito verificador do CPF
-//`quantidadeDigitosBase` = 9 para o 1º dígito e 10 para o 2º
-function _calcularDigitoCpf(cpf, quantidadeDigitosBase) {
-  let soma = 0;
-
-  for (let posicao = 0; posicao < quantidadeDigitosBase; posicao += 1) {
-    const peso = quantidadeDigitosBase + 1 - posicao;
-    soma += Number(cpf[posicao]) * peso;
-  }
-
-  const resto = (soma * 10) % 11;
-  return resto === 10 ? 0 : resto;
-}
-
-//CPF válido = 11 dígitos, não repetidos (ex.: 111.111.111-11) e com os dois
-//dígitos verificadores corretos. Espera o CPF já normalizado
-function _cpfValido(cpf) {
-  const temOnzeDigitos = /^\d{11}$/.test(cpf);
-  const todosIguais = /^(\d)\1{10}$/.test(cpf);
-  if (!temOnzeDigitos || todosIguais) return false;
-
-  const primeiroDigitoOk = _calcularDigitoCpf(cpf, 9) === Number(cpf[9]);
-  const segundoDigitoOk = _calcularDigitoCpf(cpf, 10) === Number(cpf[10]);
-
-  return primeiroDigitoOk && segundoDigitoOk;
-}
-
-//valida os campos do usuário. Devolve a mensagem de erro ou null se tudo ok
-//`ehEdicao` = true no PUT: só valida os campos que vieram no body
-function _validarCampos(dadosUsuario, ehEdicao) {
-  const _campoFoiInformado = (campo) => dadosUsuario[campo] !== undefined;
-
-  //nome
-  if (!ehEdicao || _campoFoiInformado('nome')) {
-    const nome = _normalizarNome(dadosUsuario.nome);
-    if (nome.length < 2) return 'Informe o nome (mínimo 2 letras).';
-  }
-
-  //e-mail
-  if (!ehEdicao || _campoFoiInformado('email')) {
-    const email = _normalizarEmail(dadosUsuario.email);
-    if (!REGEX_EMAIL.test(email)) return 'Informe um e-mail válido.';
-  }
-
-  //CPF
-  if (!ehEdicao || _campoFoiInformado('cpf')) {
-    const cpf = _normalizarCpf(dadosUsuario.cpf);
-    if (!_cpfValido(cpf)) return 'Informe um CPF válido.';
-  }
-
-  //perfil (role)
-  if (!ehEdicao || _campoFoiInformado('role')) {
-    if (!PERFIS_VALIDOS.includes(dadosUsuario.role)) return 'O perfil deve ser ADMIN ou MEMBRO.';
-  }
-
-  //senha: obrigatória no cadastro; na edição só valida se veio preenchida
-  const senhaFoiPreenchida = _campoFoiInformado('senha') && dadosUsuario.senha !== '';
-  if (!ehEdicao || senhaFoiPreenchida) {
-    const senha = String(dadosUsuario.senha ?? '');
-    if (senha.length < SENHA_TAMANHO_MINIMO) {
-      return `A senha deve ter no mínimo ${SENHA_TAMANHO_MINIMO} caracteres.`;
-    }
-  }
-
-  return null;
-}
-//#endregion
-
-//#region => Helpers: autorização
-//o papel informado tem poder de administração? (ADMIN da família ou master)
-function _podeAdministrar(papel) {
-  return !!papel && (papel.role === 'ADMIN' || papel.is_master);
-}
-
-//exige que quem chama seja administrador
-//devolve o papel dele (para uso posterior) ou null se não for admin
-async function _exigirAdmin(req) {
-  const papelSolicitante = await buscarPapelRepository(req.db, req.user.id);
-  return _podeAdministrar(papelSolicitante) ? papelSolicitante : null;
-}
 //#endregion
 
 //#region => listar usuários da família
 //resposta: { familia: {id, nome}, usuarios: [...], pode_editar: boolean }
 async function listarUsuarios(req, res) {
   try {
-    //busca família, membros e o papel de quem chamou
+    //1º passo: busca família, membros e o papel de quem chamou
     const [familia, usuarios, papelSolicitante] = await Promise.all([
       buscarFamiliaAtualRepository(req.db),
       listarUsuariosRepository(req.db),
       buscarPapelRepository(req.db, req.user.id)
     ]);
 
+    //2º passo: diz se quem chamou pode editar (ADMIN da família ou dono do app)
+    const podeEditar = papelSolicitante?.role === 'ADMIN' || papelSolicitante?.is_master === true;
+
     //retorna os resultados da consulta em formato JSON
     return httpResponse.success(res, 'Usuários listados com sucesso!', {
       familia,
       usuarios,
-      pode_editar: _podeAdministrar(papelSolicitante)
+      pode_editar: podeEditar
     });
 
   } catch (error) {
@@ -171,22 +68,55 @@ async function listarUsuarios(req, res) {
 async function criarUsuario(req, res) {
   try {
     //1º passo: só administrador cadastra
-    if (!(await _exigirAdmin(req))) {
+    const papelSolicitante = await buscarPapelRepository(req.db, req.user.id);
+    const solicitanteEhAdmin = papelSolicitante?.role === 'ADMIN' || papelSolicitante?.is_master === true;
+
+    if (!solicitanteEhAdmin) {
       return httpResponse.forbidden(res, 'Apenas administradores podem cadastrar usuários.');
     }
 
-    //2º passo: valida o que veio no body
-    const dadosUsuario = req.body ?? {};
-    const mensagemDeErro = _validarCampos(dadosUsuario, false);
-    if (mensagemDeErro) return httpResponse.validationError(res, mensagemDeErro);
+    //2º passo: recebe os dados do body
+    const dados = {
+      nome: req.body.nome,
+      cpf: req.body.cpf,
+      email: req.body.email,
+      senha: req.body.senha,
+      role: req.body.role
+    };
 
-    //3º passo: normaliza e grava (senha sempre como hash)
+    //3º passo: normaliza os campos recebidos
+    const nomeNormalizado = String(dados.nome ?? '').trim();
+    const emailNormalizado = String(dados.email ?? '').trim().toLowerCase();
+    const cpfNormalizado = String(dados.cpf ?? '').replace(/\D/g, '');
+    const senhaInformada = String(dados.senha ?? '');
+
+    //4º passo: valida cada campo (todos obrigatórios no cadastro)
+    if (nomeNormalizado.length < 2) {
+      return httpResponse.validationError(res, 'Informe o nome (mínimo 2 letras).');
+    }
+    if (!REGEX_EMAIL.test(emailNormalizado)) {
+      return httpResponse.validationError(res, 'Informe um e-mail válido.');
+    }
+    if (!validarCpf(cpfNormalizado)) {
+      return httpResponse.validationError(res, 'Informe um CPF válido.');
+    }
+    if (!PERFIS_VALIDOS.includes(dados.role)) {
+      return httpResponse.validationError(res, 'O perfil deve ser ADMIN ou MEMBRO.');
+    }
+    if (senhaInformada.length < SENHA_TAMANHO_MINIMO) {
+      return httpResponse.validationError(res, `A senha deve ter no mínimo ${SENHA_TAMANHO_MINIMO} caracteres.`);
+    }
+
+    //5º passo: gera o hash da senha (nunca grava a senha pura)
+    const senhaHash = await bcrypt.hash(senhaInformada, SALT_ROUNDS_BCRYPT);
+
+    //6º passo: grava o usuário na família atual
     const usuarioCriado = await criarUsuarioRepository(req.db, {
-      nome: _normalizarNome(dadosUsuario.nome),
-      cpf: _normalizarCpf(dadosUsuario.cpf),
-      email: _normalizarEmail(dadosUsuario.email),
-      senhaHash: await _gerarHashSenha(dadosUsuario.senha),
-      role: dadosUsuario.role
+      nome: nomeNormalizado,
+      cpf: cpfNormalizado,
+      email: emailNormalizado,
+      senhaHash,
+      role: dados.role
     });
 
     //retorna o usuário criado
@@ -196,7 +126,7 @@ async function criarUsuario(req, res) {
     console.error('Erro ao cadastrar usuário na etapa do controller:', error);
 
     //e-mail ou CPF já cadastrado -> 409
-    if (error.code === PG_UNIQUE_VIOLATION) {
+    if (error.code === CODIGO_UNIQUE_VIOLATION) {
       return httpResponse.conflict(res, 'Já existe um usuário com este e-mail ou CPF.');
     }
     const secureMessage = pgErrorHandler(error, 'Erro ao cadastrar o usuário.');
@@ -207,47 +137,94 @@ async function criarUsuario(req, res) {
 
 //#region => atualizar usuário
 //params: :id; body: qualquer de { nome, cpf, email, role, senha }
-//`senha` só é trocada se vier preenchida
+//só os campos enviados são validados e alterados; `senha` só é trocada se vier preenchida
 async function atualizarUsuario(req, res) {
   try {
     //1º passo: só administrador edita
-    const usuarioSolicitante = await _exigirAdmin(req);
-    if (!usuarioSolicitante) {
+    const usuarioSolicitante = await buscarPapelRepository(req.db, req.user.id);
+    const solicitanteEhAdmin = usuarioSolicitante?.role === 'ADMIN' || usuarioSolicitante?.is_master === true;
+
+    if (!solicitanteEhAdmin) {
       return httpResponse.forbidden(res, 'Apenas administradores podem editar usuários.');
     }
 
     //2º passo: o usuário-alvo precisa existir na família
     const { id: idUsuarioAlvo } = req.params;
     const usuarioAlvo = await buscarUsuarioPorIdRepository(req.db, idUsuarioAlvo);
-    if (!usuarioAlvo) return httpResponse.notFound(res, 'Usuário não encontrado.');
 
-    //3º passo: master só é editado por outro master
-    if (usuarioAlvo.is_master && !usuarioSolicitante.is_master) {
+    if (!usuarioAlvo) {
+      return httpResponse.notFound(res, 'Usuário não encontrado.');
+    }
+
+    //3º passo: dono do app só é editado por outro dono do app
+    const alvoEhDono = usuarioAlvo.is_master === true;
+    const solicitanteEhDono = usuarioSolicitante.is_master === true;
+
+    if (alvoEhDono && !solicitanteEhDono) {
       return httpResponse.forbidden(res, 'Somente o dono do app pode editar este usuário.');
     }
 
-    //4º passo: valida o que veio no body (só os campos informados)
-    const dadosUsuario = req.body ?? {};
-    const mensagemDeErro = _validarCampos(dadosUsuario, true);
-    if (mensagemDeErro) return httpResponse.validationError(res, mensagemDeErro);
+    //4º passo: recebe os dados do body (campo não enviado fica undefined)
+    const dados = {
+      nome: req.body.nome,
+      cpf: req.body.cpf,
+      email: req.body.email,
+      role: req.body.role,
+      senha: req.body.senha
+    };
 
-    //5º passo: evita o administrador se rebaixar e perder o acesso de gestão
-    const estaSeAutoRebaixando =
+    //5º passo: verifica quais campos vieram
+    const nomeInformado = dados.nome !== undefined;
+    const emailInformado = dados.email !== undefined;
+    const cpfInformado = dados.cpf !== undefined;
+    const roleInformado = dados.role !== undefined;
+    const senhaInformada = dados.senha !== undefined && dados.senha !== '';
+
+    //6º passo: normaliza só o que veio
+    const nomeNormalizado = nomeInformado ? String(dados.nome).trim() : undefined;
+    const emailNormalizado = emailInformado ? String(dados.email).trim().toLowerCase() : undefined;
+    const cpfNormalizado = cpfInformado ? String(dados.cpf).replace(/\D/g, '') : undefined;
+
+    //7º passo: valida só o que foi informado
+    if (nomeInformado && nomeNormalizado.length < 2) {
+      return httpResponse.validationError(res, 'Informe o nome (mínimo 2 letras).');
+    }
+    if (emailInformado && !REGEX_EMAIL.test(emailNormalizado)) {
+      return httpResponse.validationError(res, 'Informe um e-mail válido.');
+    }
+    if (cpfInformado && !validarCpf(cpfNormalizado)) {
+      return httpResponse.validationError(res, 'Informe um CPF válido.');
+    }
+    if (roleInformado && !PERFIS_VALIDOS.includes(dados.role)) {
+      return httpResponse.validationError(res, 'O perfil deve ser ADMIN ou MEMBRO.');
+    }
+    if (senhaInformada && String(dados.senha).length < SENHA_TAMANHO_MINIMO) {
+      return httpResponse.validationError(res, `A senha deve ter no mínimo ${SENHA_TAMANHO_MINIMO} caracteres.`);
+    }
+
+    //8º passo: evita o administrador se rebaixar e perder o acesso de gestão
+    const estaSeRebaixando =
       usuarioAlvo.id === req.user.id &&
-      dadosUsuario.role &&
-      dadosUsuario.role !== 'ADMIN' &&
-      !usuarioAlvo.is_master;
-    if (estaSeAutoRebaixando) {
+      roleInformado &&
+      dados.role !== 'ADMIN' &&
+      !alvoEhDono;
+
+    if (estaSeRebaixando) {
       return httpResponse.validationError(res, 'Você não pode rebaixar o seu próprio usuário.');
     }
 
-    //6º passo: normaliza só o que veio (undefined = não altera a coluna)
+    //9º passo: gera o hash só se a senha foi trocada
+    const senhaHash = senhaInformada
+      ? await bcrypt.hash(String(dados.senha), SALT_ROUNDS_BCRYPT)
+      : undefined;
+
+    //10º passo: grava só o que mudou (undefined = mantém o valor atual)
     const usuarioAtualizado = await atualizarUsuarioRepository(req.db, idUsuarioAlvo, {
-      nome: dadosUsuario.nome !== undefined ? _normalizarNome(dadosUsuario.nome) : undefined,
-      cpf: dadosUsuario.cpf !== undefined ? _normalizarCpf(dadosUsuario.cpf) : undefined,
-      email: dadosUsuario.email !== undefined ? _normalizarEmail(dadosUsuario.email) : undefined,
-      role: dadosUsuario.role,
-      senhaHash: dadosUsuario.senha ? await _gerarHashSenha(dadosUsuario.senha) : undefined
+      nome: nomeNormalizado,
+      cpf: cpfNormalizado,
+      email: emailNormalizado,
+      role: roleInformado ? dados.role : undefined,
+      senhaHash
     });
 
     //retorna o usuário atualizado
@@ -257,7 +234,7 @@ async function atualizarUsuario(req, res) {
     console.error('Erro ao atualizar usuário na etapa do controller:', error);
 
     //e-mail ou CPF já cadastrado -> 409
-    if (error.code === PG_UNIQUE_VIOLATION) {
+    if (error.code === CODIGO_UNIQUE_VIOLATION) {
       return httpResponse.conflict(res, 'Já existe um usuário com este e-mail ou CPF.');
     }
     const secureMessage = pgErrorHandler(error, 'Erro ao atualizar o usuário.');

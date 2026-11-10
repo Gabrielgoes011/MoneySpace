@@ -21,7 +21,7 @@ router.get('/usuarios', verificaToken, rlsMiddleware, listarUsuarios);
 router.post('/usuarios', verificaToken, rlsMiddleware, criarUsuario);
 //body: { nome, cpf, email, senha, role } (só ADMIN)
 
-router.put('/usuarios/:id', verificaToken, rlsMiddleware, atualizarUsuario);
+router.post('/usuarios/editar/:id', verificaToken, rlsMiddleware, atualizarUsuario);
 //params: id do usuário a ser editado
 //body: { nome?, cpf?, email?, role?, senha? } (só ADMIN)
 

@@ -29,6 +29,21 @@ export const dataHora = (iso) => {
 export const iniciais = (nome) =>
   String(nome ?? '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('');
 
+// Competências dos últimos meses (a partir de hoje), do mais recente para o mais antigo.
+// Devolve [{ id: 'AAAA-MM', nome: 'Novembro de 2026' }].
+export const gerarCompetencias = (quantidade) => {
+  const formatoMes = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' });
+
+  return Array.from({ length: quantidade }, (_, deslocamento) => {
+    const mes = new Date();
+    mes.setMonth(mes.getMonth() - deslocamento, 1);
+
+    const id = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, '0')}`;
+    const textoMes = formatoMes.format(mes);
+    return { id, nome: textoMes.charAt(0).toUpperCase() + textoMes.slice(1) };
+  });
+};
+
 // 'alimentação & mercado' -> 'Alimentação & Mercado' (Proper Case só na exibição)
 export const properCase = (texto) =>
   String(texto ?? '')

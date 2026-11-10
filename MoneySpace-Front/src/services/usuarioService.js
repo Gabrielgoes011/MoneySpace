@@ -1,7 +1,7 @@
 // Consumo da API de usuários da família.
 //   GET  /usuarios       -> { familia, usuarios, pode_editar }
 //   POST /usuarios       body { nome, cpf, email, senha, role }
-//   PUT  /usuarios/:id   body { nome?, cpf?, email?, role?, senha? }
+//   POST /usuarios/editar/:id   body { nome?, cpf?, email?, role?, senha? }
 // Com VITE_MODO_DEMO=true (sem backend) usa uma lista em memória só para visualizar a tela.
 import api from './api';
 
@@ -45,5 +45,5 @@ export async function atualizarUsuario(id, dados) {
     demo = { ...demo, usuarios: demo.usuarios.map((u) => (u.id === id ? { ...u, ...resto } : u)) };
     return atraso(demo.usuarios.find((u) => u.id === id));
   }
-  return api.put(`/usuarios/${id}`, dados).then((r) => r.data.data.usuario).catch(comMensagem);
+  return api.post(`/usuarios/editar/${id}`, dados).then((r) => r.data.data.usuario).catch(comMensagem);
 }

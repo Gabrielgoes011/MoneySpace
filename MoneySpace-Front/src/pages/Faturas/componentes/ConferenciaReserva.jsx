@@ -9,7 +9,8 @@ const Linha = ({ rotulo, valor, forte }) => (
   </div>
 );
 
-export default function ConferenciaReserva({ c, saldo, onSaldo, fechada, onFechar }) {
+// `saldo` é o texto digitado; `onSaldo` atualiza a tela; `onSalvarSaldo` grava no banco ao sair do campo.
+export default function ConferenciaReserva({ c, saldo, onSaldo, onSalvarSaldo, fechada, onFechar }) {
   const coberta = c.diferenca >= 0;
   return (
     <Card>
@@ -30,7 +31,8 @@ export default function ConferenciaReserva({ c, saldo, onSaldo, fechada, onFecha
               id="saldo-reserva"
               inputMode="decimal"
               value={String(saldo)}
-              onChange={(e) => onSaldo(Number(e.target.value.replace(',', '.')) || 0)}
+              onChange={(e) => onSaldo(e.target.value)}
+              onBlur={() => onSalvarSaldo?.()}
             />
           </InputGroup>
         </div>

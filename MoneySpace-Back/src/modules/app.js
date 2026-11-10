@@ -17,6 +17,9 @@ import loginRoutes from './login/login.routes.js';
 import familiaRoutes from './cadastros/familia/cadFamilia.routes.js';
 import usuarioRoutes from './cadastros/usuario/cadUsuario.routes.js';
 import categoriaRoutes from './cadastros/categoria/cadCategoria.routes.js';
+import cartaoRoutes from './cadastros/cartao/cadCartao.routes.js';
+import dashboardRoutes from './dashboard/dashboard.routes.js';
+import faturaRoutes from './fatura/fatura.routes.js';
 
 import httpResponse from '../utils/httpResponse.js';
 
@@ -64,6 +67,9 @@ app.use('/api', loginRoutes);
 app.use('/api', familiaRoutes);
 app.use('/api', usuarioRoutes);
 app.use('/api', categoriaRoutes);
+app.use('/api', cartaoRoutes);
+app.use('/api', dashboardRoutes);
+app.use('/api', faturaRoutes);
 
 // Ping da API (confirma que o backend respondeu).
 app.get('/api', (req, res) =>

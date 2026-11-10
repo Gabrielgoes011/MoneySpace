@@ -67,6 +67,37 @@ CREATE TABLE IF NOT EXISTS usuario (
 );
 
 -- ----------------------------------------------------------------------------
+-- cartao: cartões de crédito da família. Cada cartão tem um DONO (usuario).
+--   `final`: últimos 4 dígitos (ex.: '4821').
+--   `principal`: só 1 por família (índice único parcial) -> carrega no dashboard.
+--   `arquivado` = some das telas sem apagar (o histórico continua).
+--   `usuario_cadastro` = nome de quem cadastrou (snapshot, sem JOIN).
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cartao (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id_familia UUID NOT NULL REFERENCES familia(id) ON DELETE CASCADE,
+    id_usuario UUID NOT NULL REFERENCES usuario(id) ON DELETE RESTRICT,
+    nome VARCHAR(100) NOT NULL,
+    final CHAR(4) NOT NULL,
+    limite NUMERIC(14,2),
+    dia_fechamento SMALLINT,
+    dia_vencimento SMALLINT,
+    principal BOOLEAN NOT NULL DEFAULT false,
+    arquivado BOOLEAN NOT NULL DEFAULT false,
+    usuario_cadastro VARCHAR(100),
+    dt_cadastro TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT chk_cartao_final CHECK (final ~ '^[0-9]{4}$'),
+    CONSTRAINT chk_cartao_limite CHECK (limite IS NULL OR limite >= 0),
+    CONSTRAINT chk_cartao_dia_fechamento CHECK (dia_fechamento IS NULL OR dia_fechamento BETWEEN 1 AND 31),
+    CONSTRAINT chk_cartao_dia_vencimento CHECK (dia_vencimento IS NULL OR dia_vencimento BETWEEN 1 AND 31),
+    CONSTRAINT uq_cartao_familia_nome UNIQUE (id_familia, nome)
+);
+
+-- Só 1 cartão principal por família (índice único parcial).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cartao_principal_familia ON cartao(id_familia) WHERE principal = true;
+
+-- ----------------------------------------------------------------------------
 -- utilitario: lista genérica e GLOBAL (tipo, valor) que alimenta selects do
 --   front. Ex: tipo='status'. Somente leitura para o usuário -> SEM id_familia
 --   e SEM RLS. `ordem` controla a ordenação no select.
@@ -117,12 +148,17 @@ CREATE TABLE IF NOT EXISTS fatura_corpo (
     status_fat VARCHAR(20) NOT NULL DEFAULT 'ABERTA',
 
     dt_fechamento TIMESTAMP,                               -- quando fechou (NULL = aberta)
+    id_cartao UUID REFERENCES cartao(id) ON DELETE RESTRICT, -- cartão da fatura (NULL = legada)
+    competencia VARCHAR(7),                                -- mês da fatura 'AAAA-MM' (NULL = legada)
+    data_fechamento DATE,                                  -- dia que a fatura fecha (pelo dia do cartão)
+    data_vencimento DATE,                                  -- dia que a fatura vence (pelo dia do cartão)
     usuario_cadastro VARCHAR(100),                         -- nome de quem criou
     dt_cadastro TIMESTAMP DEFAULT NOW(),
 
-    CONSTRAINT chk_fatura_status CHECK (status_fat IN ('ABERTA', 'FECHADA')),
-    CONSTRAINT uq_fatura_titulo UNIQUE (id_familia, titulo)
+    CONSTRAINT chk_fatura_status CHECK (status_fat IN ('ABERTA', 'FECHADA'))
 );
+-- Uma fatura por cartão e competência (cada cartão tem a sua).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fatura_cartao_competencia ON fatura_corpo(id_cartao, competencia);
 
 -- ----------------------------------------------------------------------------
 -- fatura_transacao: os lançamentos da fatura (uma linha do CSV = um registro).
@@ -157,6 +193,8 @@ CREATE TABLE IF NOT EXISTS fatura_transacao (
 -- 3. ÍNDICES
 -- ============================================================================
 CREATE INDEX IF NOT EXISTS idx_usuario_familia  ON usuario(id_familia);
+CREATE INDEX IF NOT EXISTS idx_cartao_familia   ON cartao(id_familia);
+CREATE INDEX IF NOT EXISTS idx_cartao_usuario   ON cartao(id_usuario);
 CREATE INDEX IF NOT EXISTS idx_usuario_email     ON usuario(email);
 -- Índice parcial: há pouquíssimos masters (idealmente 1).
 CREATE INDEX IF NOT EXISTS idx_usuario_master    ON usuario(is_master) WHERE is_master = true;
@@ -164,6 +202,7 @@ CREATE INDEX IF NOT EXISTS idx_usuario_master    ON usuario(is_master) WHERE is_
 CREATE INDEX IF NOT EXISTS idx_utilitario_tipo   ON utilitario(tipo);
 
 CREATE INDEX IF NOT EXISTS idx_fatura_familia    ON fatura_corpo(id_familia);
+CREATE INDEX IF NOT EXISTS idx_fatura_cartao     ON fatura_corpo(id_cartao);
 
 CREATE INDEX IF NOT EXISTS idx_fat_trans_familia  ON fatura_transacao(id_familia);
 CREATE INDEX IF NOT EXISTS idx_fat_trans_fatura   ON fatura_transacao(id_fatura);
@@ -185,6 +224,7 @@ ALTER TABLE familia          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usuario          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fatura_corpo     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fatura_transacao ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cartao           ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS acesso_familia ON familia;
 CREATE POLICY acesso_familia ON familia
@@ -196,6 +236,10 @@ CREATE POLICY acesso_usuario ON usuario
 
 DROP POLICY IF EXISTS acesso_fatura ON fatura_corpo;
 CREATE POLICY acesso_fatura ON fatura_corpo
+    FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
+
+DROP POLICY IF EXISTS acesso_cartao ON cartao;
+CREATE POLICY acesso_cartao ON cartao
     FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
 
 DROP POLICY IF EXISTS acesso_fatura_transacao ON fatura_transacao;
