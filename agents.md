@@ -32,7 +32,7 @@ App financeiro familiar multi-tenant (1 `familia` = 1 tenant, RLS do PostgreSQL 
 ### Backend — padrão REAL em uso: 2 camadas (controller + repository), SEM service
 - `*.controller.js`: req/res + lógica/validação. `*.Repositories.js`: único com SQL. `*.routes.js`.
 - Respostas via `utils/httpResponse.js`. Erros do Postgres via `utils/pgErrorHandler.js`
-  (23505 tratado à parte no controller de usuários -> 409).
+  (`CODIGO_UNIQUE_VIOLATION` exportado dali: `23505` -> 409 nos controllers de usuários e categorias).
 - RLS POR ROTA: `router.get('/x', verificaToken, rlsMiddleware, controller)`; `rlsMiddleware` é export
   NOMEADO de `middleware/rlsMiddleware.js`. Passar `req.db` ao repository. INSERT usa
   `current_setting('app.current_familia_id', true)::uuid`. Além do RLS, filtrar `id_familia` na query.
@@ -40,8 +40,32 @@ App financeiro familiar multi-tenant (1 `familia` = 1 tenant, RLS do PostgreSQL 
 - DECISÃO (Gabriel, 2026-11-09): o projeto é SEMPRE 2 camadas (controller + repository). NÃO criar `service`,
   mesmo que o `api-Node` (fii-track-back) use 4 arquivos por módulo. Do `api-Node` herda-se só o PADRÃO DE ESCRITA abaixo.
 ### Backend — padrão de ESCRITA (herdado do api-Node/fii-track-back)
-- NÃO criar helper/constante para uso único: validação e normalização de uma função ficam DENTRO dela.
-  Helper (ou util em `utils/`) só quando for repetir em 2+ lugares.
+- ORGANIZAÇÃO: quem abre o arquivo entende o que está sendo feito. Ordem fixa: imports, constantes,
+  regiões de funções (`//#region`), exportação no fim. Uma responsabilidade por função.
+- SIMPLICIDADE: não criar complexidade onde não há. Sem abstração "por precaução", sem camada extra.
+  Se um trecho fica claro em 5 linhas, não o divida em 3 funções.
+- NOMES SUGESTIVOS em português e completos: `usuarioEncontrado`, `senhaCriptografada`, `totalFundos`.
+  Proibido `u`, `x`, `tmp`, `data2`, `res2`.
+- PADRONIZAÇÃO: todo módulo novo segue o mesmo formato. Referência: `cadastros/usuario/` (`cadUsuario.*`).
+- COMENTÁRIOS SEMPRE: todo passo tem comentário curto em minúscula acima; todo grupo de funções tem `//#region`.
+  Sem comentário, o código não está pronto.
+- ALIAS DE TABELA NO SQL: só uma letra, na ordem: 1ª tabela = `a`, 2ª = `b`, 3ª = `c`, 4ª = `d`, 5ª = `e`.
+  A contagem é por query, e subquery usa a próxima letra livre (não recomeça em `a`). Ex.: `FROM cartao a INNER JOIN usuario b ON b.id = a.id_usuario`.
+  Coluna sempre com o alias: `a.nome`, nunca `nome` solto em query com JOIN.
+- BODY: sempre desestruturado num objeto `dados` com campos explícitos, lido de `req.body`. Não usar `req.body`
+  espalhado pelo código nem `req.body ?? {}`. Campo não enviado fica `undefined` (usado para "não alterar").
+  Exemplo: `const dados = { nome: req.body.nome, cpf: req.body.cpf };` e depois só `dados.nome`, `dados.cpf`.
+- REGRA DE NEGÓCIO NÃO É HELPER: if que decide (permissão, validação de campo, bloqueio, estado) fica DENTRO
+  da função do controller, mesmo que repita. NUNCA `_verificaX()` com regra de negócio dentro.
+  Exemplo: checar se é ADMIN e validar o e-mail ficam escritos dentro de `criarUsuario`.
+- HELPERS (`_nome`, não exportados) são só transformação técnica (ex.: calcular dígito). Onde ficam:
+  - Usado só em um arquivo: fica DENTRO desse arquivo, com `_`. Ex.: `_calcularDigitoVerificador` em `utils/cpf.js`.
+  - Função técnica genérica, sem conhecer o domínio (usada em 1 ou mais módulos): `src/utils/` com arquivo próprio
+    (ex.: `httpResponse`, `pgErrorHandler`, `cpf.js` com `validarCpf`).
+    Quando for utilitário de DOMÍNIO compartilhado, vira arquivo próprio em `utils/` com nome do assunto.
+  - NÃO criar pasta `helpers/`. Uma pasta a mais só esconde código. Só separar em `<assunto>.helpers.js` dentro
+    do módulo se o arquivo passar de ~300 linhas e os helpers forem usados pelo controller E pelo repository.
+  - Helper de uso único não existe como arquivo: fica no lugar onde é usado, dentro da função ou do arquivo.
 - NUNCA alinhar código com espaços extras (colunas de `:`/`=`, chaves de objeto, imports). Um espaço só, sem linhas em branco soltas.
 - Comentários e mensagens em português. Comentário curto em minúscula acima de cada passo
   (`//abre a conexão`, `//executa a consulta`, `//retorna o resultado`). Explicar o PORQUÊ do passo, não repetir o código.
@@ -53,7 +77,8 @@ App financeiro familiar multi-tenant (1 `familia` = 1 tenant, RLS do PostgreSQL 
 - Exports NOMEADOS agrupados no FIM do arquivo, dentro de `//#region => exportação das funções`
   (`export { a, b, c }`). Só a rota usa `export default router`. Helper interno começa com `_` e não é exportado.
 - Imports no topo: libs, depois `utils`, depois o arquivo do módulo; extensão `.js` sempre.
-- SQL NUNCA é montado por concatenação/interpolação (`${...}` dentro da query). Query 100% literal com `$1, $2`.
+- SQL NUNCA é montado por concatenação/interpolação (`${...}`, `+`, variável dentro da query), nem para valor fixo
+  tipo `current_setting`. Query 100% literal com `$1, $2`.
   Update parcial = `COALESCE($1, coluna)` (passa `null` no que não mudou), não `SET` montado em loop.
   Colunas repetidas são escritas por extenso em cada query.
 - Valores de texto de cadastro (ex.: categoria) são gravados em MINÚSCULO no banco. O front exibe em Proper Case
@@ -67,7 +92,9 @@ App financeiro familiar multi-tenant (1 `familia` = 1 tenant, RLS do PostgreSQL 
   Aqui usa-se `req.db` recebido por parâmetro (RLS), não `openDb()`.
 - Rotas: `export default router`, um comentário abaixo de cada rota dizendo o que vai em body/params.
   Nome dos paths em português: `/recurso`, `/recurso/contar`, `/recurso/cadastrar`, `/recurso/editar/:id`, `/recurso/deletar/:id`
-  (no MoneySpace os usuários seguem REST: `GET/POST /usuarios`, `PUT /usuarios/:id`; manter o que já existe).
+  (no MoneySpace: `GET /usuarios`, `POST /usuarios` (cadastrar), `POST /usuarios/editar/:id`; ver regra de POST abaixo).
+- MÉTODO HTTP: SEMPRE prefira POST para escrever (cadastrar, editar, deletar), mesmo quando REST sugeriria PUT/PATCH/DELETE.
+  GET só para ler. Paths de ação em português: `/recurso/cadastrar`, `/recurso/editar/:id`, `/recurso/deletar/:id`.
 - Cabeçalho de arquivo grande: bloco `// ====` com `CONTROLLER: <assunto>` e as regras de autorização, como em `cadUsuario.controller.js`.
 ### Frontend
 - HeroUI v3 PRIMEIRO. API composta (`Card.Header`, `Select.Trigger`, `Table.ScrollContainer`,
@@ -91,33 +118,57 @@ MoneySpace-Back/
   src/modules/cadastros/familia/          cadFamilia.* (esqueleto parcial)
   src/modules/cadastros/usuario/          cadUsuario.{controller,Repositories,routes}.js  (IMPLEMENTADO)
   src/modules/cadastros/categoria/        cadCategoria.{controller,Repositories,routes}.js (IMPLEMENTADO: GET/POST /categorias)
-  src/utils/{httpResponse,pgErrorHandler,crypto}.js
+  src/modules/cadastros/cartao/           cadCartao.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /cartoes, POST /cartoes/cadastrar, POST /cartoes/deletar/:id)
+  src/modules/dashboard/                  dashboard.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /dashboard)
+  src/modules/fatura/                     fatura.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /faturas, POST /faturas/cadastrar, /saldo/:id, /fechar/:id, /lancamentos/cadastrar, /lancamentos/status/:id)
+  src/utils/{httpResponse,pgErrorHandler,crypto,cpf}.js
 MoneySpace-Front/
   index.html (meta iOS/PWA) · public/{manifest.webmanifest,sw.js,icons/*}
-  src/App.jsx                             providers (Auth, Theme, Fatura) + rotas
-  src/context/                            AuthContext, ThemeContext, FaturaContext (mock compartilhado)
-  src/services/{api,usuarioService}.js
-  src/hooks/useIsMobile.js · src/utils/formatar.js (moeda, %, data, cpfMascara, dataHora, iniciais)
-  src/mocks/faturaMock.js
+  src/App.jsx                             providers (Auth, Theme) + rotas
+  src/context/                            AuthContext, ThemeContext
+  src/services/{api,usuarioService,faturaService}.js
+  src/hooks/useIsMobile.js · src/utils/formatar.js (moeda, %, data, cpfMascara, dataHora, iniciais, gerarCompetencias)
+  src/utils/statusFatura.js               STATUS (chave da tela <-> valor do banco: 'na_hora' <-> 'na hora')
   src/components/Seletor.jsx              Select {id,nome}
   src/components/Layout/{AppLayout,MenuNavegacao,navegacao.js}
   src/pages/{Login,Welcome(/perfil),EmBreve,Cadastros(hub),Dashboard,Faturas,Usuarios}
 ```
 Rotas do front: `/login` · `/dashboard` (padrão) · `/faturas` · `/cadastros` (hub) ·
 `/cadastros/usuarios` · `/cadastros/contas` e `/cadastros/categorias` (EmBreve) · `/perfil`.
-Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/*`, `/familias`, `/usuarios`, health.
+Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/*`, `/familias`, `/usuarios`, `/categorias`, `/cartoes`, `/dashboard`, health.
 
 ## ESTADO
 - Login/2FA/logout: funcionando. NÃO existe desativar usuário (colunas `ativo`/`ultimo_acesso` não existem no Neon; decisão do Gabriel: por enquanto não quer).
 - Layout: topbar (3 linhas: PC = clique recolhe/mostra a lateral, hover abre painel preto com busca,
   grupos fechados, usuário/família/tema; celular = toque abre painel), lateral recolhível animada,
   grupo Cadastros com submenu animado, barra inferior no celular.
-- Início (`/dashboard`): filtros cartão/competência + resumo + portadores + categorias (MOCK).
-- Faturas (`/faturas`): conferência da reserva + tabela paginada (10 por página, campo "itens por página",
-  máx. 200). Status é CAMPO ÚNICO: `pendente` (padrão de todo lançamento novo) | `na_hora` | `no_fechamento` |
-  `pagamento` (não editável). Meta da reserva = na_hora + pendente. Tudo MOCK, sem API.
+- Dashboard BACK (`GET /dashboard?competencia=AAAA-MM&cartaoId=<uuid>|todos`, 2026-11-10): SÓ LEITURA. Devolve
+  `{ competencia, cartoes, resumo {pago,pendente,fechamento,total,saldoReserva}, portadores[], categorias[], semCategoria }`.
+  Todas as listas vêm com os cadastros inteiros (quem tem 0 aparece com 0). Testado com PGlite (28 cenários).
+  DECISÃO TEMPORÁRIA: `fatura_transacao.portador` é o NOME do CSV, então "quem gasta" casa por nome (sem diferença de
+  maiúsculas). Trocar por `id_usuario` na fatura quando o módulo de fatura for construído.
+  Lançamento de pagamento (`estabelecimento = 'Pagamento de fatura'`) e valor <= 0 ficam FORA dos gastos.
+  Front do dashboard ainda NÃO usa este endpoint (usa `/cartoes`, `/usuarios`, `/categorias`, valores zerados).
+- Início (`/dashboard`, 2026-11-10): SEM mock. Lista de cartões = `GET /cartoes`; "quem gasta" = `GET /usuarios`;
+  categorias = `GET /categorias` + linha fixa "Sem categoria" no fim. Valores de gasto ficam ZERADOS até existir fatura
+  importada (resumo, portadores, categorias). Competência = últimos 6 meses (gerada), mas AINDA não filtra nada.
+- FATURAS (2026-11-10): SEM MOCK, lê e grava no banco. Cabeçalho (`fatura_corpo`) tem `id_cartao`, `competencia`
+  (AAAA-MM), `data_fechamento`, `data_vencimento`; 1 fatura por cartão e competência (índice único). Sem fatura no mês,
+  o cabeçalho mostra "Criar fatura" (confirmação; fechamento/vencimento saem dos dias do cartão: fecha no mês da
+  competência; vence no mesmo mês se o dia for depois do fechamento, senão no seguinte). "Lançar gasto" manual
+  (data real, valor > 0, categoria só do cadastro, portador = nome do usuário, status padrão `pendente`).
+  Fatura FECHADA bloqueia saldo, lançamento e troca de status (409). Qualquer membro opera (decisão de contrato).
+  Front: `services/faturaService.js`, `pages/Faturas/Faturas.jsx` + `componentes/{CriarFaturaModal,LancamentoFormModal}`.
+  Testado com PGlite (39 cenários). EXIGE `migration-002` e `migration-003` aplicadas no Neon (ainda NÃO aplicadas
+  pelo Gabriel). CSV ainda não existe (botão removido até lá). Seletor "Fatura" lista só as faturas que JÁ EXISTEM
+  do cartão (`GET /faturas/listar?cartaoId=`, nome = título, mais recente primeiro); criar mês novo = modal com campo mês.
+  Status na API: `pendente` | `na hora` | `no fechamento` | `nao aplicavel` (o front converte).
+  Tabela de lançamentos: 10 por página, campo "itens por página" (máx. 200). Categoria e status são dropdown na linha.
+  Ações por linha: editar (`POST /faturas/lancamentos/editar/:id`, campo não enviado fica como está; `idUsuario: ''` e
+  `categoria: ''` tiram portador/categoria) e excluir (`POST /faturas/lancamentos/deletar/:id`). Ambas só com fatura aberta.
+  Testado com PGlite (fatura: 60 cenários).
 - Usuários (`/cadastros/usuarios`): família + lista (Table com custom cells; cards no celular), criar/editar
-  (modal). Back: `GET/POST /usuarios`, `PUT /usuarios/:id`.
+  (modal). Back: `GET /usuarios`, `POST /usuarios`, `POST /usuarios/editar/:id`.
   Regras: listar = qualquer membro; criar/editar = ADMIN ou is_master; só master edita master; não pode
   rebaixar a si mesmo; CPF validado (dígitos) e gravado só com números; senha bcrypt, mín. 6;
   e-mail/CPF duplicado -> 409. Resposta do GET: `{ familia, usuarios, pode_editar }`.
@@ -126,11 +177,25 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
   `POST /categorias` body `{ valor }` (só is_master; valor trim + espaços colapsados + minúsculo; `ordem` = MAX+1;
   duplicata -> 409). Front: `pages/Categorias`, `services/categoriaService.js`. SEM editar/excluir (ver DÍVIDAS).
 - PWA: manifest + service worker (só em produção; nunca cacheia `/api`) + ícones verdes (rascunho).
-- NÃO EXISTEM ainda: `conta`, `categoria`, módulo `fatura` no back, migrations, importador de CSV.
+- Cartões (back, 2026-11-10): `GET /cartoes` -> `{ cartoes, pode_cadastrar }` (qualquer membro; principal primeiro;
+  sem arquivados); `POST /cartoes/cadastrar` body `{ nome, final, idUsuario, limite?, diaFechamento?, diaVencimento?, principal? }`
+  SÓ ADMIN da família (ou dono do app). Regras: `final` = 4 dígitos; dono precisa ser da mesma família; `principal`
+  desmarca o anterior na mesma transação; nome repetido na família -> 409. `usuario_cadastro` = `req.user.nome`.
+  Testado com PGlite (17 cenários). A tabela `cartao` JÁ EXISTE no Neon (checado em 2026-11-10, com 1 linha).
+  Front `/cadastros/cartoes` (lista, cadastrar e excluir): feito, build OK, NÃO testado no navegador.
+- EXCLUIR CARTÃO (2026-11-10): `POST /cartoes/deletar/:id`, SÓ ADMIN. Só exclui se NÃO houver lançamento
+  (`fatura_transacao`) nas faturas do cartão; faturas vazias do cartão são apagadas junto. Sem lançamento -> 200;
+  com lançamento -> 409; cartão de outra família -> 404. Front: botão lixeira (só admin) + confirmação.
+  Depende da `migration-002-fatura-cartao.sql` (adiciona `fatura_corpo.id_cartao`, FK ON DELETE RESTRICT).
+  Testado com PGlite (16 cenários). Migration 002 ainda NÃO aplicada no Neon.
+- NÃO EXISTEM ainda: `conta` corrente/carteira, módulo `fatura` no back (só o SQL), importador de CSV.
 
 ## DECISÕES EM ABERTO (backend da fatura — Gabriel vai pensar)
 - Schema tem `fatura_corpo`/`fatura_transacao`; o mock assume cartão -> fatura (competência) -> lançamentos,
-  cartão = conta tipo CREDITO (tabela `conta` ainda não existe).
+  CARTÃO É TABELA PRÓPRIA `cartao` (decisão 2026-11-10, substitui "cartão = conta CREDITO"): dono (`id_usuario`),
+  apelido, últimos 4 dígitos, limite, dias de fechamento/vencimento, `principal` (só 1 por família, índice único
+  parcial; é o que carrega no dashboard) e `arquivado`. Migration: `db/migrations/migration-001-cartao.sql`
+  (validada em PGlite, ainda NÃO aplicada no Neon). Conta corrente/carteira: ainda não modelada.
 - Importação CSV (Rico 1º emissor): preview sem persistir, confirmar em transação única, idempotência por hash;
   todo lançamento importado nasce `pendente`.
 - Contrato do mock: `{status, fechamento, vencimento, saldoReserva, transacoes:[{id,data,estabelecimento,portador,valor,parcela,categoria,status}]}`.
@@ -148,4 +213,6 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
 - Categorias: seed do `script.sql` está com maiúsculas/acentos ("Alimentação & Mercado") e a unique é por `(tipo, valor)`,
   então "outros" e "Outros" coexistem. Falta normalizar o seed/banco para minúsculo (e o `fatura_transacao.categoria`, que guarda o texto).
 - Categorias sem editar/excluir: renomear/apagar deixaria `fatura_transacao.categoria` (texto) órfão. Decidir antes de implementar.
+- `fatura_corpo` ainda tem `UNIQUE (id_familia, titulo)`: com 2 cartões, o título "Out/2026" de um cartão bloqueia o do outro.
+  Trocar para `UNIQUE (id_cartao, titulo)` quando o módulo de fatura for construído.
 - Categorias/usuários/módulo novo ainda NÃO testados contra o banco real (só carga dos módulos e build do front).
