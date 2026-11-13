@@ -121,7 +121,7 @@ MoneySpace-Back/
   src/modules/cadastros/cartao/           cadCartao.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /cartoes, POST /cartoes/cadastrar, POST /cartoes/deletar/:id)
   src/modules/dashboard/                  dashboard.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /dashboard)
   src/modules/fatura/                     fatura.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /faturas, GET /faturas/listar, POST /faturas/cadastrar, /saldo/:id, /fechar/:id, /abrir/:id, /lancamentos/cadastrar, /lancamentos/editar/:id, /lancamentos/deletar/:id, /lancamentos/status/:id)
-  src/modules/relatorios/                 relatorios.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /relatorios/fatura?faturaId=)
+  src/modules/relatorios/                 relatorios.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /relatorios/fatura, /relatorios/semanal, /relatorios/pendencias ?faturaId=)
   src/utils/{httpResponse,pgErrorHandler,crypto,cpf}.js
 MoneySpace-Front/
   index.html (meta iOS/PWA) · public/{manifest.webmanifest,sw.js,icons/*}
@@ -166,7 +166,18 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
   Aba "Por semana" (`GET /relatorios/semanal?faturaId=`): semanas segunda a domingo com o total e o total por
   categoria, mais os lançamentos de cada categoria (recolhíveis na tela e no PDF). Mesmos botões de compartilhar,
   baixar e copiar. Testado com PGlite (12 cenários da semana; soma das semanas = total da fatura).
-  Próximo relatório planejado: pendências.
+  REGRA DE PARCELA (2026-11-11): parcela "N de M" com N > 1 NÃO é gasto da semana (é cobrança de compra antiga).
+  Ela vai para o bloco `parcelasAnteriores` no final (total e lançamentos). Só "1 de M" e "-" entram nas semanas e
+  nas categorias. Soma das semanas + parcelas anteriores = total da fatura.
+  Formato "Resumido" (para compartilhar sem detalhes): só totais das semanas e de cada categoria, sem lançamentos.
+  Formato "Completo": também os lançamentos de cada categoria (recolhíveis na tela e no PDF).
+  PENDÊNCIAS (2026-11-12): aba "Pendências" em `/relatorios`. `GET /relatorios/pendencias?faturaId=` devolve
+  `{ cabecalho, totalPendente, quantidadePendente, porPessoa[], lancamentos[] }`. Pendente = lançamento com status `pendente`
+  (não entra "na hora" nem "no fechamento"). Traz total para pagar, vencimento, "Resumo por usuário" (`porPessoa[]`:
+  quanto cada um tem pendente) e a lista item a item do que falta pagar (`lancamentos[]`, do mais antigo).
+  Uma conta só: a lista de itens não mostra quem comprou. Mesmos botões de WhatsApp, baixar e copiar.
+  Escopo = a fatura escolhida (não todas as faturas).
+  Testado com PGlite (testa_relatorio: 5 cenários de pendências, TUDO OK). PDF e tela NÃO vistos visualmente.
 - DÍVIDA TÉCNICA: controllers usam `Promise.all` no mesmo `req.db` (client da transação). O `pg` enfileira, mas avisa
   que isso será removido no pg@9. Trocar por `await` em sequência quando atualizar o `pg`.
 - FATURAS (2026-11-10): SEM MOCK, lê e grava no banco. Cabeçalho (`fatura_corpo`) tem `id_cartao`, `competencia`
@@ -238,3 +249,7 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
 - `fatura_corpo` ainda tem `UNIQUE (id_familia, titulo)`: com 2 cartões, o título "Out/2026" de um cartão bloqueia o do outro.
   Trocar para `UNIQUE (id_cartao, titulo)` quando o módulo de fatura for construído.
 - Categorias/usuários/módulo novo ainda NÃO testados contra o banco real (só carga dos módulos e build do front).
+- CONFERÊNCIA DO CSV DO BANCO: REMOVIDA (2026-11-12, pedido do usuário). Não existe mais `POST /faturas/importacao/analisar`,
+  nem o botão "Analisar extrato", nem `utils/csvFatura.js`. Se voltar, começar do zero.
+- DADO A CORRIGIR: o `dia_fechamento` do cartão Rico no Neon está 9 (o correto é 25), e por isso
+  `fatura_corpo.data_fechamento` de outubro está 09/10. Corrigir o cadastro e recalcular a fatura (precisa de autorização).

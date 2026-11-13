@@ -21,3 +21,11 @@ export async function buscarRelatorioFatura(faturaId) {
     .then((r) => r.data.data)
     .catch(comMensagem);
 }
+
+// O que ainda falta pagar na fatura (lançamentos pendentes, por pessoa).
+export async function buscarRelatorioPendencias(faturaId) {
+  return api
+    .get('/relatorios/pendencias', { params: { faturaId } })
+    .then((r) => r.data.data)
+    .catch(comMensagem);
+}

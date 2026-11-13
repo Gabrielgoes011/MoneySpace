@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import verificaToken from '../../middleware/auth/verificaToken.js';
 import { rlsMiddleware } from '../../middleware/rlsMiddleware.js';
-import { relatorioFatura, relatorioSemanal } from './relatorios.controller.js';
+import { relatorioFatura, relatorioSemanal, relatorioPendencias } from './relatorios.controller.js';
 
 const router = Router();
 
@@ -16,6 +16,10 @@ router.get('/relatorios/fatura', verificaToken, rlsMiddleware, relatorioFatura);
 
 // Valor gasto por semana (segunda a domingo) e detalhes por categoria
 router.get('/relatorios/semanal', verificaToken, rlsMiddleware, relatorioSemanal);
+//query: faturaId=<uuid>
+
+// O que ainda falta pagar na fatura (lançamentos pendentes, por pessoa)
+router.get('/relatorios/pendencias', verificaToken, rlsMiddleware, relatorioPendencias);
 //query: faturaId=<uuid>
 
 export default router;

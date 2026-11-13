@@ -1,13 +1,26 @@
-// Relatório por semana: total de cada semana e, por categoria, os lançamentos (recolhíveis).
-import { Card, Button } from '@heroui/react';
+// Relatório por semana. Formato "completo" traz os lançamentos de cada categoria;
+// "resumido" traz só os totais (para compartilhar sem detalhes).
+// Parcelas de faturas passadas (2 de N em diante) ficam num bloco próprio, fora das semanas.
+import { Card, Button, Tabs } from '@heroui/react';
 import { FiShare2, FiDownload, FiCopy } from 'react-icons/fi';
 import { moeda } from '../../../utils/formatar';
 
-export default function ResultadoSemanal({ relatorio, onCompartilhar, onBaixar, onCopiar }) {
+export default function ResultadoSemanal({ relatorio, formato, onFormato, onCompartilhar, onBaixar, onCopiar }) {
+  const resumido = formato === 'resumido';
   const totalLancamentos = relatorio.categoriasDetalhe.reduce((soma, c) => soma + c.quantidade, 0);
+  const parcelas = relatorio.parcelasAnteriores;
 
   return (
     <div className="space-y-5">
+      <Tabs selectedKey={formato} onSelectionChange={onFormato}>
+        <Tabs.ListContainer>
+          <Tabs.List aria-label="Formato do relatório">
+            <Tabs.Tab id="completo">Completo<Tabs.Indicator /></Tabs.Tab>
+            <Tabs.Tab id="resumido">Resumido<Tabs.Indicator /></Tabs.Tab>
+          </Tabs.List>
+        </Tabs.ListContainer>
+      </Tabs>
+
       <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
         <Button onPress={onCompartilhar} className="sm:flex-1">
           <FiShare2 size={16} /> Compartilhar (WhatsApp)
@@ -54,30 +67,44 @@ export default function ResultadoSemanal({ relatorio, onCompartilhar, onBaixar, 
         </div>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Detalhes por categoria ({totalLancamentos})</h2>
-        {relatorio.categoriasDetalhe.map((categoria) => (
-          <details key={categoria.nome} className="group rounded-xl border border-separator bg-background">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4">
-              <span className="font-semibold">{categoria.nome}</span>
-              <span className="text-sm text-muted">
-                {categoria.quantidade} · <span className="font-semibold tabular-nums text-foreground">{moeda(categoria.total)}</span>
-              </span>
-            </summary>
-            <div className="divide-y divide-separator border-t border-separator">
-              {categoria.lancamentos.map((lancamento, indice) => (
-                <div key={`${lancamento.dataCompra}-${indice}`} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate">{lancamento.estabelecimento}</p>
-                    <p className="text-xs text-muted">{lancamento.dataCompra} · {lancamento.portador.split(' ')[0]}</p>
+      {parcelas?.quantidade > 0 && (
+        <Card>
+          <Card.Content className="gap-1 p-4">
+            <span className="font-semibold">Parcelas de faturas anteriores</span>
+            <span className="text-sm text-muted">
+              {parcelas.quantidade} lançamento(s) de compras antigas que continuam sendo pagas nesta fatura
+            </span>
+            <span className="text-lg font-bold tabular-nums">{moeda(parcelas.total)}</span>
+          </Card.Content>
+        </Card>
+      )}
+
+      {!resumido && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Detalhes por categoria ({totalLancamentos})</h2>
+          {relatorio.categoriasDetalhe.map((categoria) => (
+            <details key={categoria.nome} className="group rounded-xl border border-separator bg-background">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-4">
+                <span className="font-semibold">{categoria.nome}</span>
+                <span className="text-sm text-muted">
+                  {categoria.quantidade} · <span className="font-semibold tabular-nums text-foreground">{moeda(categoria.total)}</span>
+                </span>
+              </summary>
+              <div className="divide-y divide-separator border-t border-separator">
+                {categoria.lancamentos.map((lancamento, indice) => (
+                  <div key={`${lancamento.dataCompra}-${indice}`} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate">{lancamento.estabelecimento}</p>
+                      <p className="text-xs text-muted">{lancamento.dataCompra} · {lancamento.portador.split(' ')[0]}</p>
+                    </div>
+                    <span className="shrink-0 tabular-nums">{moeda(lancamento.valor)}</span>
                   </div>
-                  <span className="shrink-0 tabular-nums">{moeda(lancamento.valor)}</span>
-                </div>
-              ))}
-            </div>
-          </details>
-        ))}
-      </section>
+                ))}
+              </div>
+            </details>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

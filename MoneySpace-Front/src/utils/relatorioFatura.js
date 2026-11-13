@@ -139,8 +139,8 @@ export function montarTextoResumo(relatorio) {
 }
 
 // PDF do relatório por semana: um quadro com as semanas e, depois, os lançamentos de cada categoria.
-export function gerarPdfRelatorioSemanal(relatorio) {
-  const { cabecalho, totalGeral, semanas, categoriasDetalhe } = relatorio;
+export function gerarPdfRelatorioSemanal(relatorio, resumido = false) {
+  const { cabecalho, totalGeral, semanas, categoriasDetalhe, parcelasAnteriores } = relatorio;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
   // Cabeçalho (mesmo estilo do relatório geral)
@@ -170,9 +170,22 @@ export function gerarPdfRelatorioSemanal(relatorio) {
     columnStyles: { 2: { halign: 'center' }, 3: { halign: 'right' } },
   });
 
-  // Detalhes por categoria (cada uma com os seus lançamentos)
+  // Resumido: só o total de cada categoria. Completo: cada categoria com os seus lançamentos.
   let y = _posicaoDepois(doc, 60) + 10;
-  categoriasDetalhe.forEach((categoria) => {
+  if (resumido) {
+    autoTable(doc, {
+      startY: y,
+      head: [['Categoria', 'Lancamentos', 'Total']],
+      body: categoriasDetalhe.map((c) => [c.nome, String(c.quantidade), moeda(c.total)]),
+      theme: 'striped',
+      headStyles: { fillColor: VERDE },
+      margin: { left: MARGEM, right: MARGEM },
+      columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' } },
+    });
+    y = _posicaoDepois(doc, y) + 8;
+  }
+  const categoriasParaDetalhar = resumido ? [] : categoriasDetalhe;
+  categoriasParaDetalhar.forEach((categoria) => {
     // quebra de página se o título ficar sozinho no fim da folha
     if (y > 260) {
       doc.addPage();
@@ -204,6 +217,31 @@ export function gerarPdfRelatorioSemanal(relatorio) {
     y = _posicaoDepois(doc, y) + 8;
   });
 
+  // Parcelas de faturas passadas: fora das semanas, em bloco próprio no final
+  if (parcelasAnteriores?.quantidade > 0) {
+    if (y > 240) {
+      doc.addPage();
+      y = 16;
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...VERDE);
+    doc.text(`Parcelas de faturas anteriores - ${parcelasAnteriores.quantidade} lancamento(s) - ${moeda(parcelasAnteriores.total)}`, MARGEM, y);
+    doc.setTextColor(0, 0, 0);
+    if (!resumido) {
+      autoTable(doc, {
+        startY: y + 2,
+        head: [['Data', 'Estabelecimento', 'Portador', 'Parcela', 'Categoria', 'Valor']],
+        body: parcelasAnteriores.lancamentos.map((l) => [l.dataCompra, l.estabelecimento, l.portador, l.parcela, l.categoria, moeda(l.valor)]),
+        theme: 'striped',
+        headStyles: { fillColor: VERDE },
+        margin: { left: MARGEM, right: MARGEM },
+        styles: { fontSize: 8, cellPadding: 1.5 },
+        columnStyles: { 5: { halign: 'right' } },
+      });
+    }
+  }
+
   const totalPaginas = doc.internal.getNumberOfPages();
   for (let pagina = 1; pagina <= totalPaginas; pagina += 1) {
     doc.setPage(pagina);
@@ -218,7 +256,7 @@ export function gerarPdfRelatorioSemanal(relatorio) {
 
 // Texto curto do relatório por semana, para o WhatsApp.
 export function montarTextoSemanal(relatorio) {
-  const { cabecalho, totalGeral, semanas, categoriasDetalhe } = relatorio;
+  const { cabecalho, totalGeral, semanas, categoriasDetalhe, parcelasAnteriores } = relatorio;
   const linhasSemanas = semanas.map((semana) => `- ${semana.rotulo} (${semana.periodo}): ${moeda(semana.total)}`).join('\n');
   const linhasCategorias = categoriasDetalhe.map((c) => `- ${c.nome}: ${moeda(c.total)}`).join('\n');
 
@@ -229,6 +267,109 @@ export function montarTextoSemanal(relatorio) {
     '',
     'Por categoria:',
     linhasCategorias,
+    ...(parcelasAnteriores?.quantidade > 0
+      ? ['', `Parcelas de faturas anteriores: ${moeda(parcelasAnteriores.total)} (${parcelasAnteriores.quantidade})`]
+      : []),
+  ].join('\n');
+}
+
+// PDF das pendências: o total que falta pagar, o vencimento e a lista item a item (uma conta só).
+export function gerarPdfRelatorioPendencias(relatorio) {
+  const { cabecalho, totalPendente, quantidadePendente, porPessoa, lancamentos } = relatorio;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+  // Cabeçalho (mesmo estilo dos outros relatórios)
+  doc.setFillColor(...VERDE);
+  doc.rect(0, 0, 210, 26, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('MoneySpace - Pendencias da fatura', MARGEM, 12);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`${cabecalho.titulo} - ${cabecalho.nomeCartao} ${cabecalho.finalCartao}`, MARGEM, 19);
+
+  // Vencimento e o total que falta pagar (o número principal da folha)
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(11);
+  doc.text(`Vencimento: ${cabecalho.dataVencimento}    Fechamento: ${cabecalho.dataFechamento}`, MARGEM, 36);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(...VERDE);
+  doc.text(`Para pagar: ${moeda(totalPendente)}`, MARGEM, 49);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+  doc.text(`${quantidadePendente} lancamento(s) pendente(s)`, MARGEM, 56);
+
+  // Resumo por usuário: quanto cada um tem pendente
+  if (porPessoa.length > 0) {
+    autoTable(doc, {
+      startY: 64,
+      head: [['Resumo por usuario', 'Lancamentos', 'Total']],
+      body: porPessoa.map((p) => [p.nome, String(p.quantidade), moeda(p.total)]),
+      theme: 'striped',
+      headStyles: { fillColor: VERDE },
+      margin: { left: MARGEM, right: MARGEM },
+      columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' } },
+    });
+  }
+
+  // Lista do que falta pagar, item a item (ou aviso de que nada está pendente)
+  if (lancamentos.length === 0) {
+    doc.setFontSize(12);
+    doc.text('Nada pendente nesta fatura.', MARGEM, 70);
+  } else {
+    autoTable(doc, {
+      startY: _posicaoDepois(doc, 64) + 10,
+      head: [['Data', 'Estabelecimento', 'Parcela', 'Valor']],
+      body: lancamentos.map((l) => [l.dataCompra, l.estabelecimento, l.parcela ?? '-', moeda(l.valor)]),
+      foot: [['', 'Total', '', moeda(totalPendente)]],
+      theme: 'striped',
+      headStyles: { fillColor: VERDE },
+      footStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
+      margin: { left: MARGEM, right: MARGEM },
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      columnStyles: { 3: { halign: 'right' } },
+    });
+  }
+
+  const totalPaginas = doc.internal.getNumberOfPages();
+  for (let pagina = 1; pagina <= totalPaginas; pagina += 1) {
+    doc.setPage(pagina);
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text(`MoneySpace - pagina ${pagina} de ${totalPaginas}`, 105, 290, { align: 'center' });
+  }
+
+  const nomeArquivo = `pendencias-${cabecalho.competencia}-${cabecalho.finalCartao}.pdf`;
+  return { doc, nomeArquivo };
+}
+
+// Texto curto das pendências para o WhatsApp: o total, o vencimento e o que falta pagar.
+export function montarTextoPendencias(relatorio) {
+  const { cabecalho, totalPendente, quantidadePendente, porPessoa, lancamentos } = relatorio;
+  const titulo = `*Pendências - ${cabecalho.titulo} - ${cabecalho.nomeCartao} ${cabecalho.finalCartao}*`;
+
+  if (lancamentos.length === 0) {
+    return [titulo, 'Nada pendente nesta fatura.'].join('\n');
+  }
+
+  const linhasItens = lancamentos.map((l) => {
+    const parcela = l.parcela && l.parcela !== '-' ? ` (${l.parcela})` : '';
+    return `${l.dataCompra} - ${l.estabelecimento}${parcela} - ${moeda(l.valor)}`;
+  }).join('\n');
+
+  return [
+    titulo,
+    `Vence ${cabecalho.dataVencimento}`,
+    `Para pagar: *${moeda(totalPendente)}* (${quantidadePendente} lançamento(s))`,
+    '',
+    'Resumo por usuário:',
+    porPessoa.map((p) => `- ${p.nome}: ${moeda(p.total)}`).join('\n'),
+    '',
+    'O que falta pagar:',
+    linhasItens,
   ].join('\n');
 }
 

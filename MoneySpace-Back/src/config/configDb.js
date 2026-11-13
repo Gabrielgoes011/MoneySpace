@@ -46,7 +46,8 @@ const pool = new Pool({
     connectionString,
     max: 20,
     min: 0,
-    idleTimeoutMillis: 60000,
+    // o pooler do Neon fecha conexões ociosas; descartar antes evita usar uma conexão já morta
+    idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 20000,
     statement_timeout: 60000,
     keepAlive: true,

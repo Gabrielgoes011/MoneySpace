@@ -44,6 +44,7 @@ const NOMES_DOS_MESES = [
 ];
 const STATUS_LANCAMENTO_VALIDOS = ['pendente', 'na hora', 'no fechamento', 'nao aplicavel'];
 const CODIGO_FK_VIOLADA = '23503';
+
 // (validação de data real fica em cadastrarLancamento, logo abaixo)
 //#endregion
 

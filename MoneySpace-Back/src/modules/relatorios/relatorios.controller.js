@@ -157,9 +157,22 @@ async function relatorioSemanal(req, res) {
       return new Date(dataUtc.getTime() - voltarAteSegunda * 86400000).toISOString().slice(0, 10);
     };
 
-    //7º passo: agrupa por semana e, dentro da semana, por categoria
-    const mapaSemanas = {};
+    //7º passo: separa compra nova (à vista ou 1 de N) de parcela de fatura passada (2 de N em diante).
+    //parcela passada não é gasto desta semana: ela só cobra uma parte de uma compra antiga.
+    const lancamentosNovos = [];
+    const lancamentosParcelasAnteriores = [];
     lancamentos.forEach((lancamento) => {
+      const numeroDaParcela = Number(String(lancamento.parcela ?? '').match(/^(\d+)\s+de\s+\d+$/i)?.[1] ?? 1);
+      if (numeroDaParcela > 1) {
+        lancamentosParcelasAnteriores.push(lancamento);
+      } else {
+        lancamentosNovos.push(lancamento);
+      }
+    });
+
+    //8º passo: agrupa as compras novas por semana e, dentro da semana, por categoria
+    const mapaSemanas = {};
+    lancamentosNovos.forEach((lancamento) => {
       const inicioSemana = segundaDaSemana(lancamento.data_iso);
       const nomeCategoria = lancamento.categoria ?? SEM_CATEGORIA;
 
@@ -189,9 +202,9 @@ async function relatorioSemanal(req, res) {
         };
       });
 
-    //9º passo: detalhes por categoria (todos os lançamentos de cada uma)
+    //9º passo: detalhes por categoria (só compras novas; parcelas passadas têm bloco próprio)
     const mapaCategorias = {};
-    lancamentos.forEach((lancamento) => {
+    lancamentosNovos.forEach((lancamento) => {
       const nomeCategoria = lancamento.categoria ?? SEM_CATEGORIA;
       mapaCategorias[nomeCategoria] ??= { nome: nomeCategoria, total: 0, quantidade: 0, lancamentos: [] };
       const categoria = mapaCategorias[nomeCategoria];
@@ -209,6 +222,21 @@ async function relatorioSemanal(req, res) {
 
     const categoriasDetalhe = Object.values(mapaCategorias).sort((a, b) => b.total - a.total);
 
+    //10º passo: bloco final com as parcelas de faturas passadas (não entram nas semanas)
+    const parcelasAnteriores = {
+      total: lancamentosParcelasAnteriores.reduce((total, lancamento) => total + Number(lancamento.valor), 0),
+      quantidade: lancamentosParcelasAnteriores.length,
+      lancamentos: lancamentosParcelasAnteriores.map((lancamento) => ({
+        dataCompra: formatarDiaMesAno(lancamento.data_iso),
+        estabelecimento: lancamento.estabelecimento,
+        portador: lancamento.portador ?? SEM_PORTADOR,
+        valor: Number(lancamento.valor),
+        parcela: lancamento.parcela,
+        categoria: lancamento.categoria ?? SEM_CATEGORIA,
+        statusTransacao: lancamento.status_transacao
+      }))
+    };
+
     //retorna o relatório por semana
     return httpResponse.success(res, 'Relatório por semana gerado com sucesso!', {
       cabecalho: {
@@ -222,7 +250,8 @@ async function relatorioSemanal(req, res) {
       },
       totalGeral: lancamentos.reduce((total, lancamento) => total + Number(lancamento.valor), 0),
       semanas,
-      categoriasDetalhe
+      categoriasDetalhe,
+      parcelasAnteriores
     });
 
   } catch (error) {
@@ -233,9 +262,83 @@ async function relatorioSemanal(req, res) {
 }
 //#endregion
 
+//#region => relatório de pendências (o que ainda falta pagar na fatura)
+//query: faturaId (obrigatório)
+//pendente = lançamento com status 'pendente' (ainda não marcado como pago).
+//resposta: { cabecalho, totalPendente, quantidadePendente, porPessoa, lancamentos }
+async function relatorioPendencias(req, res) {
+  try {
+    //1º passo: recebe a fatura da URL
+    const dados = { faturaId: req.query.faturaId };
+    const idFatura = String(dados.faturaId ?? '').trim();
+
+    //2º passo: valida a fatura
+    if (!REGEX_UUID.test(idFatura)) {
+      return httpResponse.validationError(res, 'Informe a fatura.');
+    }
+
+    //3º passo: a fatura precisa existir na família
+    const cabecalhoEncontrado = await buscarCabecalhoFaturaRepository(req.db, idFatura);
+
+    if (!cabecalhoEncontrado) {
+      return httpResponse.notFound(res, 'Fatura não encontrada.');
+    }
+
+    //4º passo: busca os lançamentos e fica só com os pendentes
+    const lancamentos = await listarLancamentosRelatorioRepository(req.db, idFatura);
+    const lancamentosPendentes = lancamentos.filter((lancamento) => lancamento.status_transacao === 'pendente');
+
+    //5º passo: soma quanto cada usuário tem pendente (sem portador vira uma linha própria)
+    const mapaPessoas = {};
+    lancamentosPendentes.forEach((lancamento) => {
+      const nomePessoa = lancamento.portador ?? SEM_PORTADOR;
+      mapaPessoas[nomePessoa] ??= { nome: nomePessoa, total: 0, quantidade: 0 };
+      mapaPessoas[nomePessoa].total += Number(lancamento.valor);
+      mapaPessoas[nomePessoa].quantidade += 1;
+    });
+
+    //6º passo: arredonda em 2 casas e ordena do maior para o menor valor
+    const arredondar = (valor) => Math.round(valor * 100) / 100;
+    const porPessoa = Object.values(mapaPessoas)
+      .map((pessoa) => ({ nome: pessoa.nome, total: arredondar(pessoa.total), quantidade: pessoa.quantidade }))
+      .sort((a, b) => b.total - a.total);
+    const totalPendente = arredondar(lancamentosPendentes.reduce((total, lancamento) => total + Number(lancamento.valor), 0));
+
+    //retorna as pendências
+    return httpResponse.success(res, 'Pendências geradas com sucesso!', {
+      cabecalho: {
+        titulo: cabecalhoEncontrado.titulo,
+        competencia: cabecalhoEncontrado.competencia,
+        nomeCartao: cabecalhoEncontrado.nome_cartao,
+        finalCartao: cabecalhoEncontrado.final_cartao,
+        fechada: cabecalhoEncontrado.status_fat === 'FECHADA',
+        dataFechamento: cabecalhoEncontrado.data_fechamento,
+        dataVencimento: cabecalhoEncontrado.data_vencimento
+      },
+      totalPendente,
+      quantidadePendente: lancamentosPendentes.length,
+      porPessoa,
+      //o que falta pagar, item a item (do mais antigo para o mais recente)
+      lancamentos: lancamentosPendentes.map((lancamento) => ({
+        dataCompra: lancamento.data_compra,
+        estabelecimento: lancamento.estabelecimento,
+        parcela: lancamento.parcela,
+        valor: Number(lancamento.valor)
+      }))
+    });
+
+  } catch (error) {
+    console.error('Erro ao gerar as pendências na etapa do controller:', error);
+    const secureMessage = pgErrorHandler(error, 'Erro ao gerar as pendências.');
+    return httpResponse.error(res, secureMessage);
+  }
+}
+//#endregion
+
 //#region => exportação das funções
 export {
   relatorioFatura,
-  relatorioSemanal
+  relatorioSemanal,
+  relatorioPendencias
 }
 //#endregion

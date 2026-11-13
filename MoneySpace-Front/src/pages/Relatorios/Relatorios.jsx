@@ -1,4 +1,4 @@
-// Relatórios: escolhe o cartão e a fatura e vê o relatório geral ou o gasto por semana.
+// Relatórios: escolhe o cartão e a fatura e vê o relatório geral, o gasto por semana ou o que falta pagar.
 // Compartilha o PDF (WhatsApp) ou baixa. Tudo sai do próprio aparelho.
 import { useEffect, useState } from 'react';
 import { Button, Card, Chip, Spinner, Tabs, toast } from '@heroui/react';
@@ -7,12 +7,18 @@ import Seletor from '../../components/Seletor';
 import ResultadoSemanal from './componentes/ResultadoSemanal';
 import { listarCartoes } from '../../services/cartaoService';
 import { listarFaturasCartao } from '../../services/faturaService';
-import { buscarRelatorioFatura, buscarRelatorioSemanal } from '../../services/relatorioService';
+import {
+  buscarRelatorioFatura,
+  buscarRelatorioSemanal,
+  buscarRelatorioPendencias
+} from '../../services/relatorioService';
 import {
   gerarPdfRelatorioFatura,
   montarTextoResumo,
   gerarPdfRelatorioSemanal,
   montarTextoSemanal,
+  gerarPdfRelatorioPendencias,
+  montarTextoPendencias,
   compartilharRelatorioPdf
 } from '../../utils/relatorioFatura';
 import { moeda } from '../../utils/formatar';
@@ -29,6 +35,23 @@ function Indicador({ rotulo, valor, destaque = false }) {
   );
 }
 
+// Botões de enviar (WhatsApp), baixar e copiar: iguais em todas as abas
+function AcoesRelatorio({ onCompartilhar, onBaixar, onCopiar }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+      <Button onPress={onCompartilhar} className="sm:flex-1">
+        <FiShare2 size={16} /> Compartilhar (WhatsApp)
+      </Button>
+      <Button variant="secondary" onPress={onBaixar}>
+        <FiDownload size={16} /> Baixar PDF
+      </Button>
+      <Button variant="ghost" onPress={onCopiar}>
+        <FiCopy size={16} /> Copiar resumo
+      </Button>
+    </div>
+  );
+}
+
 export default function Relatorios() {
   const [cartoes, setCartoes] = useState(null);
   const [cartaoId, setCartaoId] = useState('');
@@ -37,6 +60,8 @@ export default function Relatorios() {
   const [aba, setAba] = useState('geral');
   const [relatorio, setRelatorio] = useState(null);
   const [relatorioSemanal, setRelatorioSemanal] = useState(null);
+  const [relatorioPendencias, setRelatorioPendencias] = useState(null);
+  const [formatoSemanal, setFormatoSemanal] = useState('completo');
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState('');
 
@@ -66,6 +91,7 @@ export default function Relatorios() {
   useEffect(() => {
     setRelatorio(null);
     setRelatorioSemanal(null);
+    setRelatorioPendencias(null);
   }, [faturaId]);
 
   if (erro) {
@@ -75,25 +101,44 @@ export default function Relatorios() {
     return <div className="flex justify-center p-16"><Spinner /></div>;
   }
 
-  // Gera o relatório da aba escolhida
+  // Gera o relatório da aba escolhida (cada aba tem a sua busca e o seu estado)
   const gerar = () => {
     setGerando(true);
-    const buscar = aba === 'geral' ? buscarRelatorioFatura : buscarRelatorioSemanal;
-    const aplicar = aba === 'geral' ? setRelatorio : setRelatorioSemanal;
+    const buscar = {
+      geral: buscarRelatorioFatura,
+      semanal: buscarRelatorioSemanal,
+      pendencias: buscarRelatorioPendencias,
+    }[aba];
+    const aplicar = {
+      geral: setRelatorio,
+      semanal: setRelatorioSemanal,
+      pendencias: setRelatorioPendencias,
+    }[aba];
     buscar(faturaId)
       .then(aplicar)
       .catch((e) => toast.danger(e.message))
       .finally(() => setGerando(false));
   };
 
+  // Monta o PDF da aba escolhida
+  const montarPdf = () => {
+    if (aba === 'geral') return gerarPdfRelatorioFatura(relatorio);
+    if (aba === 'semanal') return gerarPdfRelatorioSemanal(relatorioSemanal, formatoSemanal === 'resumido');
+    return gerarPdfRelatorioPendencias(relatorioPendencias);
+  };
+
+  // Monta o texto curto da aba escolhida (para o WhatsApp e para copiar)
+  const montarTexto = () => {
+    if (aba === 'geral') return montarTextoResumo(relatorio);
+    if (aba === 'semanal') return montarTextoSemanal(relatorioSemanal);
+    return montarTextoPendencias(relatorioPendencias);
+  };
+
   // Abre a folha de compartilhar (WhatsApp) com o PDF; sem suporte, baixa o arquivo.
   const compartilhar = async () => {
-    const { doc, nomeArquivo } = aba === 'geral'
-      ? gerarPdfRelatorioFatura(relatorio)
-      : gerarPdfRelatorioSemanal(relatorioSemanal);
-    const texto = aba === 'geral' ? montarTextoResumo(relatorio) : montarTextoSemanal(relatorioSemanal);
+    const { doc, nomeArquivo } = montarPdf();
     try {
-      const resultado = await compartilharRelatorioPdf(doc, nomeArquivo, texto);
+      const resultado = await compartilharRelatorioPdf(doc, nomeArquivo, montarTexto());
       if (resultado === 'baixado') toast.success('PDF baixado. Envie pelo WhatsApp.');
     } catch {
       toast.danger('Não foi possível compartilhar o relatório.');
@@ -101,15 +146,12 @@ export default function Relatorios() {
   };
 
   const baixar = () => {
-    const { doc, nomeArquivo } = aba === 'geral'
-      ? gerarPdfRelatorioFatura(relatorio)
-      : gerarPdfRelatorioSemanal(relatorioSemanal);
+    const { doc, nomeArquivo } = montarPdf();
     doc.save(nomeArquivo);
   };
 
   const copiarResumo = () => {
-    const texto = aba === 'geral' ? montarTextoResumo(relatorio) : montarTextoSemanal(relatorioSemanal);
-    navigator.clipboard.writeText(texto)
+    navigator.clipboard.writeText(montarTexto())
       .then(() => toast.success('Resumo copiado.'))
       .catch(() => toast.danger('Não foi possível copiar o resumo.'));
   };
@@ -119,7 +161,12 @@ export default function Relatorios() {
     id: fatura.id,
     nome: fatura.fechada ? `${fatura.titulo} · fechada` : fatura.titulo,
   }));
-  const temRelatorio = aba === 'geral' ? relatorio : relatorioSemanal;
+  const relatorioDaAba = aba === 'geral' ? relatorio : aba === 'semanal' ? relatorioSemanal : relatorioPendencias;
+  const rotuloGerar = {
+    geral: 'Gerar relatório geral',
+    semanal: 'Gerar gasto por semana',
+    pendencias: 'Gerar pendências',
+  }[aba];
 
   return (
     <div className="space-y-5">
@@ -147,6 +194,7 @@ export default function Relatorios() {
           <Tabs.List aria-label="Tipo de relatório">
             <Tabs.Tab id="geral">Geral<Tabs.Indicator /></Tabs.Tab>
             <Tabs.Tab id="semanal">Por semana<Tabs.Indicator /></Tabs.Tab>
+            <Tabs.Tab id="pendencias">Pendências<Tabs.Indicator /></Tabs.Tab>
           </Tabs.List>
         </Tabs.ListContainer>
       </Tabs>
@@ -158,9 +206,9 @@ export default function Relatorios() {
       )}
 
       {opcoesFatura.length > 0 && (
-        <Button onPress={gerar} isDisabled={!faturaId || gerando} variant={temRelatorio ? 'secondary' : 'primary'} className="w-full sm:w-auto">
+        <Button onPress={gerar} isDisabled={!faturaId || gerando} variant={relatorioDaAba ? 'secondary' : 'primary'} className="w-full sm:w-auto">
           <FiFileText size={16} />
-          {gerando ? 'Gerando...' : temRelatorio ? 'Atualizar' : aba === 'geral' ? 'Gerar relatório geral' : 'Gerar gasto por semana'}
+          {gerando ? 'Gerando...' : relatorioDaAba ? 'Atualizar' : rotuloGerar}
         </Button>
       )}
 
@@ -224,27 +272,78 @@ export default function Relatorios() {
             O PDF traz os {relatorio.resumo.quantidadeLancamentos} lançamentos completos.
           </p>
 
-          <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-            <Button onPress={compartilhar} className="sm:flex-1">
-              <FiShare2 size={16} /> Compartilhar (WhatsApp)
-            </Button>
-            <Button variant="secondary" onPress={baixar}>
-              <FiDownload size={16} /> Baixar PDF
-            </Button>
-            <Button variant="ghost" onPress={copiarResumo}>
-              <FiCopy size={16} /> Copiar resumo
-            </Button>
-          </div>
+          <AcoesRelatorio onCompartilhar={compartilhar} onBaixar={baixar} onCopiar={copiarResumo} />
         </>
       )}
 
       {aba === 'semanal' && relatorioSemanal && (
         <ResultadoSemanal
           relatorio={relatorioSemanal}
+          formato={formatoSemanal}
+          onFormato={setFormatoSemanal}
           onCompartilhar={compartilhar}
           onBaixar={baixar}
           onCopiar={copiarResumo}
         />
+      )}
+
+      {aba === 'pendencias' && relatorioPendencias && (
+        <>
+          <Card>
+            <Card.Content className="gap-2 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold">{relatorioPendencias.cabecalho.titulo}</p>
+                  <p className="text-sm text-muted">
+                    {relatorioPendencias.cabecalho.nomeCartao} ••{relatorioPendencias.cabecalho.finalCartao} · vence {relatorioPendencias.cabecalho.dataVencimento}
+                  </p>
+                </div>
+                <Chip size="sm" variant="soft" color={relatorioPendencias.cabecalho.fechada ? 'default' : 'success'}>
+                  {relatorioPendencias.cabecalho.fechada ? 'Fechada' : 'Aberta'}
+                </Chip>
+              </div>
+            </Card.Content>
+          </Card>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Indicador rotulo="Para pagar" valor={moeda(relatorioPendencias.totalPendente)} destaque />
+            <Indicador rotulo="Lançamentos pendentes" valor={String(relatorioPendencias.quantidadePendente)} />
+          </div>
+
+          <Card>
+            <Card.Header><Card.Title>Resumo por usuário</Card.Title></Card.Header>
+            <Card.Content className="gap-2">
+              {relatorioPendencias.porPessoa.map((pessoa) => (
+                <div key={pessoa.nome} className="flex justify-between gap-2 text-sm">
+                  <span>{pessoa.nome} <span className="text-muted">({pessoa.quantidade})</span></span>
+                  <span className="font-semibold tabular-nums">{moeda(pessoa.total)}</span>
+                </div>
+              ))}
+            </Card.Content>
+          </Card>
+
+          <Card>
+            <Card.Header><Card.Title>O que falta pagar</Card.Title></Card.Header>
+            <Card.Content className="gap-0 divide-y divide-separator">
+              {relatorioPendencias.lancamentos.length === 0 && (
+                <p className="text-sm text-muted">Nada pendente nesta fatura.</p>
+              )}
+              {relatorioPendencias.lancamentos.map((item, indice) => (
+                <div key={indice} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate">{item.estabelecimento}{item.parcela && item.parcela !== '-' ? ` (${item.parcela})` : ''}</p>
+                    <p className="text-xs text-muted">{item.dataCompra}</p>
+                  </div>
+                  <span className="shrink-0 font-semibold tabular-nums">{moeda(item.valor)}</span>
+                </div>
+              ))}
+            </Card.Content>
+          </Card>
+
+          <p className="text-sm text-muted">O PDF e o texto também trazem essa lista item a item.</p>
+
+          <AcoesRelatorio onCompartilhar={compartilhar} onBaixar={baixar} onCopiar={copiarResumo} />
+        </>
       )}
     </div>
   );
