@@ -49,7 +49,8 @@ export function gerarPdfRelatorioFatura(relatorio) {
     ['Pendente', moeda(resumo.totalPendente)],
     ['No fechamento', moeda(resumo.totalNoFechamento)],
     ['Saldo da reserva', moeda(resumo.saldoReserva)],
-    ['Meta da reserva (na hora + pendente)', moeda(resumo.metaReserva)],
+    ...(resumo.recebidoRateio > 0 ? [['(-) Ja recebido do rateio', moeda(resumo.recebidoRateio)]] : []),
+    [resumo.recebidoRateio > 0 ? 'Meta da reserva (na hora + pendente - recebido do rateio)' : 'Meta da reserva (na hora + pendente)', moeda(resumo.metaReserva)],
     [resumo.sobraOuFalta >= 0 ? 'Sobra na reserva' : 'Falta na reserva', moeda(Math.abs(resumo.sobraOuFalta))],
   ];
   autoTable(doc, {
@@ -346,24 +347,41 @@ export function gerarPdfRelatorioPendencias(relatorio) {
   return { doc, nomeArquivo };
 }
 
+// Uma pessoa do rateio, em uma frase: só mostra o que faz sentido (sem "falta R$ 0,00").
+export function descreverParteRateio(parte) {
+  if (parte.absorvido) return 'absorvido (quem adiantou assume)';
+  if (parte.falta <= 0) return `pagou ${moeda(parte.pago)} (quitado)`;
+  if (parte.pago <= 0) return `falta ${moeda(parte.falta)}`;
+  return `pagou ${moeda(parte.pago)}, falta ${moeda(parte.falta)}`;
+}
+
 // Texto curto das pendências para o WhatsApp: o total, o vencimento e o que falta pagar.
 export function montarTextoPendencias(relatorio) {
-  const { cabecalho, totalPendente, quantidadePendente, porPessoa, lancamentos } = relatorio;
+  const { cabecalho, totalPendente, quantidadePendente, aReceber, porPessoa, lancamentos } = relatorio;
   const titulo = `*Pendências - ${cabecalho.titulo} - ${cabecalho.nomeCartao} ${cabecalho.finalCartao}*`;
 
   if (lancamentos.length === 0) {
     return [titulo, 'Nada pendente nesta fatura.'].join('\n');
   }
 
-  const linhasItens = lancamentos.map((l) => {
+  // Cada compra: se for rachada, mostra o total da linha e o que ainda falta; senão, só o valor
+  const linhasItens = lancamentos.flatMap((l) => {
     const parcela = l.parcela && l.parcela !== '-' ? ` (${l.parcela})` : '';
-    return `${l.dataCompra} - ${l.estabelecimento}${parcela} - ${moeda(l.valor)}`;
+    const linhaCompra = l.recebido > 0
+      ? `${l.dataCompra} - ${l.estabelecimento}${parcela} - total ${moeda(l.valor)}, falta ${moeda(l.valorLiquido)}`
+      : `${l.dataCompra} - ${l.estabelecimento}${parcela} - ${moeda(l.valor)}`;
+    if (!l.rateio) return [linhaCompra];
+
+    const linhasPartes = l.rateio.map((p) => `   ${p.nome}: ${descreverParteRateio(p)}`);
+    return [linhaCompra, ...linhasPartes];
   }).join('\n');
 
   return [
     titulo,
     `Vence ${cabecalho.dataVencimento}`,
-    `Para pagar: *${moeda(totalPendente)}* (${quantidadePendente} lançamento(s))`,
+    `Total pendente: *${moeda(totalPendente)}* (${quantidadePendente} lançamento(s))`,
+    ...(relatorio.recebidoRateio > 0 ? [`Já recebido do rateio: ${moeda(relatorio.recebidoRateio)}`] : []),
+    ...(aReceber > 0 ? [`Falta receber do rateio: *${moeda(aReceber)}*`] : []),
     '',
     'Resumo por usuário:',
     porPessoa.map((p) => `- ${p.nome}: ${moeda(p.total)}`).join('\n'),

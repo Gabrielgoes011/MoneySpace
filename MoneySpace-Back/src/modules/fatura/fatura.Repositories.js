@@ -86,7 +86,15 @@ async function listarLancamentosFaturaRepository(db, idFatura) {
             a.valor,
             a.parcela,
             a.categoria,
-            a.status_transacao
+            a.status_transacao,
+            a.rateado,
+            COALESCE((
+                SELECT SUM(c.valor)
+                FROM fatura_rateio_pagamento c
+                INNER JOIN fatura_rateio b ON b.id_rateio = c.id_rateio
+                WHERE b.id_transacao = a.id_transacao
+                AND b.absorvido = false
+                AND c.id_familia = current_setting('app.current_familia_id', true)::uuid), 0) AS recebido
         FROM fatura_transacao a
         WHERE a.id_fatura = $1
         AND a.id_familia = current_setting('app.current_familia_id', true)::uuid
@@ -192,9 +200,9 @@ async function criarLancamentoRepository(db, dadosLancamento) {
     //executa a consulta SQL para inserir o lançamento na família atual
     const resultado = await db.query(`
         INSERT INTO fatura_transacao
-            (id_familia, id_fatura, dt_compra, estabelecimento, portador, valor, parcela, categoria, status_transacao, usuario_cadastro)
+            (id_familia, id_fatura, dt_compra, estabelecimento, portador, valor, parcela, categoria, status_transacao, rateado, usuario_cadastro)
         VALUES
-            (current_setting('app.current_familia_id', true)::uuid, $1, $2, $3, $4, $5, $6, $7, $8, $9)
+            (current_setting('app.current_familia_id', true)::uuid, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id_transacao`,
         [
             dadosLancamento.idFatura,
@@ -205,6 +213,7 @@ async function criarLancamentoRepository(db, dadosLancamento) {
             dadosLancamento.parcela,
             dadosLancamento.categoria,
             dadosLancamento.statusTransacao,
+            dadosLancamento.rateado,
             dadosLancamento.usuarioCadastro
         ]
     );
@@ -228,6 +237,7 @@ async function buscarLancamentoComFaturaRepository(db, idTransacao) {
             a.parcela,
             a.categoria,
             a.status_transacao,
+            a.rateado,
             b.status_fat
         FROM fatura_transacao a
         INNER JOIN fatura_corpo b ON b.id_fatura = a.id_fatura
@@ -294,8 +304,9 @@ async function atualizarLancamentoRepository(db, idTransacao, dadosLancamento) {
             valor = $4,
             parcela = $5,
             categoria = $6,
-            status_transacao = $7
-        WHERE id_transacao = $8
+            status_transacao = $7,
+            rateado = $8
+        WHERE id_transacao = $9
         AND id_familia = current_setting('app.current_familia_id', true)::uuid
         RETURNING id_transacao, status_transacao`,
         [
@@ -306,12 +317,35 @@ async function atualizarLancamentoRepository(db, idTransacao, dadosLancamento) {
             dadosLancamento.parcela,
             dadosLancamento.categoria,
             dadosLancamento.statusTransacao,
+            dadosLancamento.rateado,
             idTransacao
         ]
     );
 
     //retorna o lançamento atualizado
     return resultado.rows[0];
+}
+
+//conta as partes e os pagamentos de rateio de um lançamento (para travar exclusões que perderiam dinheiro registrado)
+async function contarRateioLancamentoRepository(db, idTransacao) {
+
+    //executa a consulta SQL; cada subquery usa a próxima letra livre
+    const resultado = await db.query(`
+        SELECT
+            (SELECT COUNT(*) FROM fatura_rateio a
+                WHERE a.id_transacao = $1
+                AND a.id_familia = current_setting('app.current_familia_id', true)::uuid) AS partes,
+            (SELECT COUNT(*) FROM fatura_rateio_pagamento b
+                INNER JOIN fatura_rateio c ON c.id_rateio = b.id_rateio
+                WHERE c.id_transacao = $1
+                AND b.id_familia = current_setting('app.current_familia_id', true)::uuid) AS pagamentos`, [idTransacao]
+    );
+
+    //retorna os dois totais como número
+    return {
+        partes: Number(resultado.rows[0].partes),
+        pagamentos: Number(resultado.rows[0].pagamentos)
+    };
 }
 
 //apaga um lançamento da família
@@ -356,6 +390,7 @@ export {
     abrirFaturaRepository,
     atualizarLancamentoRepository,
     excluirLancamentoRepository,
+    contarRateioLancamentoRepository,
     listarFaturasCartaoRepository,
     buscarCartaoParaFaturaRepository,
     buscarFaturaPorCartaoCompetenciaRepository,

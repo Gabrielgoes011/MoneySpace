@@ -3,13 +3,18 @@
 export function calcular(transacoes, saldoReserva) {
   const soma = (fn) => transacoes.filter(fn).reduce((a, x) => a + x.valor, 0);
   const pago = soma((x) => x.status === 'na_hora');
-  const pendente = soma((x) => x.status === 'pendente');
+  const pendenteBruto = soma((x) => x.status === 'pendente');
   const fechamento = soma((x) => x.status === 'no_fechamento');
   const pagamentos = Math.abs(soma((x) => x.status === 'pagamento'));
-  const bruto = pago + pendente + fechamento;
+  const bruto = pago + pendenteBruto + fechamento;
+  // já pago pelas outras pessoas do rateio (dinheiro que já está com você): sai da parte pendente
+  const recebido = Math.round(transacoes
+    .filter((x) => x.status === 'pendente')
+    .reduce((a, x) => a + (x.recebido ?? 0), 0) * 100) / 100;
+  const pendente = Math.round((pendenteBruto - recebido) * 100) / 100;
   const meta = pago + pendente;
   const diferenca = saldoReserva - meta;
-  return { pago, pendente, fechamento, pagamentos, bruto, liquido: bruto - pagamentos, meta, diferenca };
+  return { pago, pendente, pendenteBruto, recebido, fechamento, pagamentos, bruto, liquido: bruto - pagamentos, meta, diferenca };
 }
 
 export function agrupar(transacoes, chave) {

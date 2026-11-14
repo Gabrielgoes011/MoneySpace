@@ -122,6 +122,7 @@ MoneySpace-Back/
   src/modules/dashboard/                  dashboard.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /dashboard)
   src/modules/fatura/                     fatura.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /faturas, GET /faturas/listar, POST /faturas/cadastrar, /saldo/:id, /fechar/:id, /abrir/:id, /lancamentos/cadastrar, /lancamentos/editar/:id, /lancamentos/deletar/:id, /lancamentos/status/:id)
   src/modules/relatorios/                 relatorios.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /relatorios/fatura, /relatorios/semanal, /relatorios/pendencias ?faturaId=)
+  src/modules/rateio/                     rateio.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /rateio?lancamentoId=, POST /rateio/partes/{cadastrar,editar/:id,deletar/:id,pagar/:id,absorver/:id}, POST /rateio/pagamentos/deletar/:id)
   src/utils/{httpResponse,pgErrorHandler,crypto,cpf}.js
 MoneySpace-Front/
   index.html (meta iOS/PWA) · public/{manifest.webmanifest,sw.js,icons/*}
@@ -177,6 +178,9 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
   quanto cada um tem pendente) e a lista item a item do que falta pagar (`lancamentos[]`, do mais antigo).
   Uma conta só: a lista de itens não mostra quem comprou. Mesmos botões de WhatsApp, baixar e copiar.
   Escopo = a fatura escolhida (não todas as faturas).
+  RATEIO NO COPIAR (2026-11-14): cada item rachado traz `rateio[]` (nome, previsto, pago, falta, absorvido) e o total traz `aReceber`
+  (o que os outros ainda devem). O TEXTO COPIADO/WhatsApp mostra, por compra, o total da linha e, para cada pessoa, "pagou X, falta Y"
+  (ou "absorvido"), e no topo "Total pendente" + "Falta receber do rateio". PDF e tela ainda não mostram as partes no texto do PDF.
   Testado com PGlite (testa_relatorio: 5 cenários de pendências, TUDO OK). PDF e tela NÃO vistos visualmente.
 - DÍVIDA TÉCNICA: controllers usam `Promise.all` no mesmo `req.db` (client da transação). O `pg` enfileira, mas avisa
   que isso será removido no pg@9. Trocar por `await` em sequência quando atualizar o `pg`.
@@ -205,6 +209,41 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
   Regras: listar = qualquer membro; criar/editar = ADMIN ou is_master; só master edita master; não pode
   rebaixar a si mesmo; CPF validado (dígitos) e gravado só com números; senha bcrypt, mín. 6;
   e-mail/CPF duplicado -> 409. Resposta do GET: `{ familia, usuarios, pode_editar }`.
+- MINHA CONTA (`/perfil`, 2026-11-14; link "Minha conta" no bloco do usuário do menu do topo). Tela `pages/Conta/Conta.jsx`
+  com 3 blocos, todos do PRÓPRIO usuário (qualquer membro):
+  - Dados pessoais: `GET /usuarios/minha-conta` -> `{ usuario }`; `POST /usuarios/minha-conta` body `{ nome, email, cpf }`
+    (nome mín. 2, e-mail válido, CPF válido gravado só com números, e-mail/CPF de outro membro -> 409). Perfil (role) não muda.
+  - Senha: `POST /usuarios/trocar-senha` body `{ senhaAtual, senhaNova }`. Nova com mín. 8 (mais que os 6 do cadastro),
+    diferente da atual. Senha atual errada -> 400 (NÃO 401: o front derruba a sessão com 401). Rate limit = loginLimiter.
+  - 2FA: `/2fa/iniciar` (QR), `/2fa/confirmar` (liga), `/2fa/desativar` body `{ codigo }`. DESATIVAR EXIGE o código TOTP
+    atual (antes qualquer sessão desligava o 2FA; corrigido em 2026-11-14).
+  Testado com PGlite: `testa_troca_senha` (13 cenários) e `testa_minha_conta` (9 cenários), TUDO OK.
+  NÃO testado no navegador nem o 2FA ponta a ponta (depende do app autenticador).
+- RATEIO (2026-11-14): compra rachada entre várias pessoas (da família ou de fora, só o NOME). EXIGE `db/migrations/migration-005-rateio.sql`
+  aplicada no Neon (ainda NÃO aplicada; o Gabriel aplica no SQL Editor). Sem ela, a fatura inteira quebra (`fatura_transacao.rateado`).
+  - Tabelas: `rateio_pessoa` (nomes por família, único sem diferença de maiúsculas), `fatura_rateio` (parte de uma pessoa em um
+    lançamento: `valor_previsto`, `absorvido`), `fatura_rateio_pagamento` (cada pagamento). `fatura_transacao.rateado` = flag.
+  - O valor pago de uma parte NÃO é coluna: é a SOMA dos pagamentos. Pode pagar em várias vezes e pagar a MAIS que o previsto.
+  - As partes NÃO precisam somar o valor da compra (grava mesmo assim; a tela mostra "faltam/sobram"). O que não foi rateado fica
+    com quem adiantou (portador do lançamento). Absorver = quem adiantou assume o que falta; sai do "a cobrar"; dá para desfazer.
+  - Situação da parte (calculada no back): pendente | parcial | pago | pagou a mais | absorvido. "A cobrar" soma só o que falta nas
+    partes não absorvidas (pagar a mais não abate as dívidas dos outros).
+  - Rateio é controle da família, não do cartão: o total da fatura e o status do lançamento NÃO mudam, e o rateio edita mesmo com
+    a fatura FECHADA. Editar o valor previsto vale mesmo com pagamentos. Remover parte só sem pagamentos (apague o pagamento antes).
+  - Travas na fatura: não dá para desligar a flag `rateado` com partes cadastradas (409) nem excluir lançamento com pagamento de
+    rateio (409). A flag liga sozinha ao incluir a 1ª parte, ou no formulário do lançamento ("Racha esta compra entre pessoas").
+  - Front: linha rateada destacada + botão "Rateio" (também na marca "Rateio" da linha) abre `RateioModal` (janela no PC, tela cheia
+    no celular). Escritas só confirmam; a tela busca o rateio de novo (GET).
+  - JÁ RECEBIDO DO RATEIO (2026-11-14, corrigido): cada lançamento traz `recebido` = o que as OUTRAS pessoas já pagaram (partes NÃO
+    absorvidas). Dinheiro que já está com quem adiantou sai do pendente: `pendente líquido = pendente bruto − recebido` (só compras
+    "pendente"). Vale nos cards da fatura (`calculos.js`: Pendente líquido, "já recebido do rateio" embaixo), no dashboard
+    (`resumo.pendente` já vem líquido + `resumo.recebidoRateio`) e no relatório geral (`resumo.recebidoRateio`, `metaReserva`).
+    Meta = na hora + pendente líquido. Total da fatura continua o bruto (é o que o cartão cobra).
+  - PENDÊNCIAS: `totalPendente` = líquido (igual aos cards); `porPessoa` = líquido por portador; cada linha traz `valor` (cheio),
+    `recebido` e `valorLiquido`. `aReceber` continua sendo o que os outros AINDA devem (falta), só aparece se > 0.
+    Texto/tela: "falta" da pessoa só aparece se > 0 (`descreverParteRateio`): "pagou X (quitado)", "pagou X, falta Y", "falta Y", "absorvido".
+  - Testado com PGlite: `testa_rateio` + `testa_relatorio` + `testa_fatura` (com a 005). NÃO testado no navegador.
+  - Fora do escopo por enquanto: relatório "quem me deve" por pessoa; rateio no dashboard.
 - Categorias (`/cadastros/categorias`, 2026-11-09): linhas da tabela GLOBAL `utilitario` com tipo `'categoria'`
   (sem id_familia/RLS, vale para todas as famílias). Back: `GET /categorias` -> `{ categorias, pode_editar }`;
   `POST /categorias` body `{ valor }` (só is_master; valor trim + espaços colapsados + minúsculo; `ordem` = MAX+1;

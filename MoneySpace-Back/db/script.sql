@@ -180,12 +180,53 @@ CREATE TABLE IF NOT EXISTS fatura_transacao (
 
     categoria VARCHAR(60),                                 -- rótulo da utilitario (tipo='categoria')
     status_transacao VARCHAR(20) NOT NULL DEFAULT 'pendente',
+    rateado BOOLEAN NOT NULL DEFAULT false,                -- compra rachada entre pessoas (ver rateio abaixo)
 
     usuario_cadastro VARCHAR(100),
     dt_cadastro TIMESTAMP DEFAULT NOW(),
 
     CONSTRAINT chk_status_transacao CHECK (status_transacao IN
         ('pendente', 'na hora', 'no fechamento', 'nao aplicavel'))
+);
+
+-- ----------------------------------------------------------------------------
+-- RATEIO: uma compra rachada entre pessoas (da família ou de fora, só o nome).
+--   rateio_pessoa           : nomes de quem divide, por família.
+--   fatura_rateio           : a parte de cada pessoa em um lançamento.
+--   fatura_rateio_pagamento : cada pagamento de uma parte. O "valor pago" é a SOMA
+--                             dos pagamentos (pode passar do previsto). Quem adiantou
+--                             a compra (portador do lançamento) absorve o que sobrar.
+-- Mesma definição de db/migrations/migration-005-rateio.sql.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS rateio_pessoa (
+    id_pessoa UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id_familia UUID NOT NULL REFERENCES familia(id) ON DELETE CASCADE,
+    nome VARCHAR(100) NOT NULL,
+    usuario_cadastro VARCHAR(100),
+    dt_cadastro TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_rateio_pessoa_nome ON rateio_pessoa(id_familia, LOWER(nome));
+
+CREATE TABLE IF NOT EXISTS fatura_rateio (
+    id_rateio UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id_familia UUID NOT NULL REFERENCES familia(id) ON DELETE CASCADE,
+    id_transacao UUID NOT NULL REFERENCES fatura_transacao(id_transacao) ON DELETE CASCADE,
+    id_pessoa UUID NOT NULL REFERENCES rateio_pessoa(id_pessoa) ON DELETE RESTRICT,
+    valor_previsto NUMERIC(14,2) NOT NULL CHECK (valor_previsto > 0),
+    absorvido BOOLEAN NOT NULL DEFAULT false,
+    usuario_cadastro VARCHAR(100),
+    dt_cadastro TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT uq_rateio_transacao_pessoa UNIQUE (id_transacao, id_pessoa)
+);
+
+CREATE TABLE IF NOT EXISTS fatura_rateio_pagamento (
+    id_pagamento UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id_familia UUID NOT NULL REFERENCES familia(id) ON DELETE CASCADE,
+    id_rateio UUID NOT NULL REFERENCES fatura_rateio(id_rateio) ON DELETE CASCADE,
+    valor NUMERIC(14,2) NOT NULL CHECK (valor > 0),
+    dt_pagamento DATE NOT NULL DEFAULT CURRENT_DATE,
+    usuario_cadastro VARCHAR(100),
+    dt_cadastro TIMESTAMP DEFAULT NOW()
 );
 
 
@@ -211,6 +252,12 @@ CREATE INDEX IF NOT EXISTS idx_fat_trans_status    ON fatura_transacao(status_tr
 CREATE INDEX IF NOT EXISTS idx_fat_trans_categoria ON fatura_transacao(categoria);
 CREATE INDEX IF NOT EXISTS idx_fat_trans_data      ON fatura_transacao(dt_compra);
 
+CREATE INDEX IF NOT EXISTS idx_rateio_pessoa_familia  ON rateio_pessoa(id_familia);
+CREATE INDEX IF NOT EXISTS idx_fat_rateio_familia     ON fatura_rateio(id_familia);
+CREATE INDEX IF NOT EXISTS idx_fat_rateio_transacao   ON fatura_rateio(id_transacao);
+CREATE INDEX IF NOT EXISTS idx_fat_rateio_pag_familia ON fatura_rateio_pagamento(id_familia);
+CREATE INDEX IF NOT EXISTS idx_fat_rateio_pag_rateio  ON fatura_rateio_pagamento(id_rateio);
+
 
 -- ============================================================================
 -- 4. ROW-LEVEL SECURITY (RLS) — isolamento por família
@@ -225,6 +272,9 @@ ALTER TABLE usuario          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fatura_corpo     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fatura_transacao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cartao           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rateio_pessoa    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fatura_rateio    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fatura_rateio_pagamento ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS acesso_familia ON familia;
 CREATE POLICY acesso_familia ON familia
@@ -244,6 +294,18 @@ CREATE POLICY acesso_cartao ON cartao
 
 DROP POLICY IF EXISTS acesso_fatura_transacao ON fatura_transacao;
 CREATE POLICY acesso_fatura_transacao ON fatura_transacao
+    FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
+
+DROP POLICY IF EXISTS acesso_rateio_pessoa ON rateio_pessoa;
+CREATE POLICY acesso_rateio_pessoa ON rateio_pessoa
+    FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
+
+DROP POLICY IF EXISTS acesso_fatura_rateio ON fatura_rateio;
+CREATE POLICY acesso_fatura_rateio ON fatura_rateio
+    FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
+
+DROP POLICY IF EXISTS acesso_fatura_rateio_pagamento ON fatura_rateio_pagamento;
+CREATE POLICY acesso_fatura_rateio_pagamento ON fatura_rateio_pagamento
     FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid);
 
 

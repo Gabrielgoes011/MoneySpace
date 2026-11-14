@@ -111,11 +111,12 @@ export default function MenuNavegacao({ itens, user, familia, isDark, onTema, on
           </nav>
 
           <div className="space-y-2 border-t border-separator p-3 text-sm dark:border-white/10">
-            <div>
-              <p className="font-semibold">{user?.nome || 'Gabriel'}</p>
+            {/* Nome e e-mail levam para "Minha conta" (dados, senha e 2FA) */}
+            <NavLink to="/perfil" className="block rounded-lg p-1 hover:bg-default">
+              <p className="font-semibold">{user?.nome || 'Gabriel'} <span className="text-xs font-normal text-accent">Minha conta</span></p>
               {user?.email && <p className="truncate text-xs text-muted">{user.email}</p>}
               <p className="mt-1 flex items-center gap-1.5 text-xs text-muted"><FiUsers size={12} /> {familia}</p>
-            </div>
+            </NavLink>
             <div className="flex gap-2">
               <Button size="sm" variant="secondary" className="flex-1" onPress={onTema}>
                 {isDark ? <FiSun size={14} /> : <FiMoon size={14} />} {isDark ? 'Tema claro' : 'Tema escuro'}

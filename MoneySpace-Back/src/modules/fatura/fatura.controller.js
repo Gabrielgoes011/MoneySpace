@@ -31,7 +31,8 @@ import {
   buscarLancamentoComFaturaRepository,
   alterarStatusLancamentoRepository,
   atualizarLancamentoRepository,
-  excluirLancamentoRepository
+  excluirLancamentoRepository,
+  contarRateioLancamentoRepository
 } from './fatura.Repositories.js';
 
 //#region => Constantes
@@ -110,7 +111,9 @@ async function buscarFatura(req, res) {
         valor: Number(lancamento.valor),
         parcela: lancamento.parcela,
         categoria: lancamento.categoria,
-        statusTransacao: lancamento.status_transacao
+        statusTransacao: lancamento.status_transacao,
+        rateado: lancamento.rateado,
+        recebido: Number(lancamento.recebido)
       }))
     });
 
@@ -288,7 +291,7 @@ async function fecharFatura(req, res) {
 //#endregion
 
 //#region => lançar gasto manualmente
-//body: { idFatura, dataCompra (AAAA-MM-DD), estabelecimento, valor, idUsuario?, categoria?, parcela?, statusTransacao? }
+//body: { idFatura, dataCompra (AAAA-MM-DD), estabelecimento, valor, idUsuario?, categoria?, parcela?, statusTransacao?, rateado? }
 async function cadastrarLancamento(req, res) {
   try {
     //1º passo: recebe os dados do body
@@ -300,7 +303,8 @@ async function cadastrarLancamento(req, res) {
       idUsuario: req.body.idUsuario,
       categoria: req.body.categoria,
       parcela: req.body.parcela,
-      statusTransacao: req.body.statusTransacao
+      statusTransacao: req.body.statusTransacao,
+      rateado: req.body.rateado
     };
 
     //2º passo: normaliza os campos
@@ -379,6 +383,7 @@ async function cadastrarLancamento(req, res) {
       parcela,
       categoria: categoriaGravada,
       statusTransacao,
+      rateado: dados.rateado === true || dados.rateado === 'true',
       usuarioCadastro: req.user.nome
     });
 
@@ -442,7 +447,7 @@ async function alterarStatusLancamento(req, res) {
 
 //#region => editar lançamento
 //params: :id do lançamento
-//body: qualquer de { dataCompra, estabelecimento, valor, idUsuario, categoria, parcela, statusTransacao }
+//body: qualquer de { dataCompra, estabelecimento, valor, idUsuario, categoria, parcela, statusTransacao, rateado }
 //campo que não vier fica como está; idUsuario '' tira o portador; categoria '' tira a categoria
 async function editarLancamento(req, res) {
   try {
@@ -471,7 +476,8 @@ async function editarLancamento(req, res) {
       idUsuario: req.body.idUsuario,
       categoria: req.body.categoria,
       parcela: req.body.parcela,
-      statusTransacao: req.body.statusTransacao
+      statusTransacao: req.body.statusTransacao,
+      rateado: req.body.rateado
     };
 
     //4º passo: valida data, estabelecimento, valor, parcela e status (só os que vieram)
@@ -545,7 +551,20 @@ async function editarLancamento(req, res) {
       }
     }
 
-    //7º passo: grava o lançamento com os valores finais
+    //7º passo: flag de rateio (não enviada mantém). Não dá para desligar com partes cadastradas.
+    const rateado = dados.rateado === undefined
+      ? lancamentoAtual.rateado
+      : (dados.rateado === true || dados.rateado === 'true');
+
+    if (lancamentoAtual.rateado && !rateado) {
+      const rateioDoLancamento = await contarRateioLancamentoRepository(req.db, idLancamento);
+
+      if (rateioDoLancamento.partes > 0) {
+        return httpResponse.conflict(res, 'Esta compra tem pessoas no rateio. Remova as partes antes de desligar o rateio.');
+      }
+    }
+
+    //8º passo: grava o lançamento com os valores finais
     const lancamentoAtualizado = await atualizarLancamentoRepository(req.db, idLancamento, {
       dataCompra,
       estabelecimento,
@@ -553,7 +572,8 @@ async function editarLancamento(req, res) {
       valor,
       parcela,
       categoria,
-      statusTransacao
+      statusTransacao,
+      rateado
     });
 
     return httpResponse.success(res, 'Lançamento atualizado com sucesso!', {
@@ -590,7 +610,14 @@ async function excluirLancamento(req, res) {
       return httpResponse.conflict(res, 'Esta fatura está fechada e não pode ser alterada.');
     }
 
-    //3º passo: apaga o lançamento
+    //3º passo: lançamento com pagamento de rateio registrado não é apagado (perderia o histórico)
+    const rateioDoLancamento = await contarRateioLancamentoRepository(req.db, idLancamento);
+
+    if (rateioDoLancamento.pagamentos > 0) {
+      return httpResponse.conflict(res, 'Esta compra tem pagamentos de rateio registrados. Apague os pagamentos antes de excluir o lançamento.');
+    }
+
+    //4º passo: apaga o lançamento
     await excluirLancamentoRepository(req.db, idLancamento);
 
     return httpResponse.success(res, 'Lançamento excluído com sucesso!', { id: idLancamento });

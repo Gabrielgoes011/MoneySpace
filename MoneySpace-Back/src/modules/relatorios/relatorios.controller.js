@@ -12,7 +12,8 @@ import httpResponse from '../../utils/httpResponse.js';
 import pgErrorHandler from '../../utils/pgErrorHandler.js';
 import {
   buscarCabecalhoFaturaRepository,
-  listarLancamentosRelatorioRepository
+  listarLancamentosRelatorioRepository,
+  listarPartesRateioPendentesRepository
 } from './relatorios.Repositories.js';
 
 //#region => Constantes
@@ -55,7 +56,11 @@ async function relatorioFatura(req, res) {
     const totalNoFechamento = somarStatus('no fechamento');
     const totalGeral = lancamentos.reduce((total, lancamento) => total + Number(lancamento.valor), 0);
     const saldoReserva = Number(cabecalhoEncontrado.saldo_reserva);
-    const metaReserva = totalNaHora + totalPendente;
+    //já recebido do rateio (de quem não foi absorvido) nas compras pendentes: abate a meta da reserva
+    const recebidoRateio = Math.round(lancamentos
+      .filter((lancamento) => lancamento.status_transacao === 'pendente')
+      .reduce((total, lancamento) => total + Number(lancamento.recebido), 0) * 100) / 100;
+    const metaReserva = Math.round((totalNaHora + totalPendente - recebidoRateio) * 100) / 100;
 
     //6º passo: agrupa por portador (sem portador vira uma linha própria)
     const mapaPortadores = {};
@@ -94,6 +99,7 @@ async function relatorioFatura(req, res) {
         totalPendente,
         totalNoFechamento,
         saldoReserva,
+        recebidoRateio,
         metaReserva,
         sobraOuFalta: saldoReserva - metaReserva,
         quantidadeLancamentos: lancamentos.length
@@ -288,21 +294,35 @@ async function relatorioPendencias(req, res) {
     const lancamentos = await listarLancamentosRelatorioRepository(req.db, idFatura);
     const lancamentosPendentes = lancamentos.filter((lancamento) => lancamento.status_transacao === 'pendente');
 
-    //5º passo: soma quanto cada usuário tem pendente (sem portador vira uma linha própria)
+    //4º passo (rateio): partes de cada compra, para mostrar quem já pagou e quanto falta
+    const partesRateio = await listarPartesRateioPendentesRepository(req.db, idFatura);
+    const partesPorCompra = {};
+    partesRateio.forEach((parte) => {
+      partesPorCompra[parte.id_transacao] ??= [];
+      partesPorCompra[parte.id_transacao].push(parte);
+    });
+
+    //5º passo: quanto cada compra ainda pesa para quem adiantou = valor menos o que as outras pessoas
+    //já pagaram (partes não absorvidas). É o mesmo número dos cards da fatura.
+    const arredondar = (valor) => Math.round(valor * 100) / 100;
+    const recebidoDaCompra = (idTransacao) => arredondar((partesPorCompra[idTransacao] ?? [])
+      .filter((parte) => !parte.absorvido)
+      .reduce((soma, parte) => soma + Number(parte.valor_pago), 0));
+    const valorLiquidoDaCompra = (lancamento) => arredondar(Number(lancamento.valor) - recebidoDaCompra(lancamento.id_transacao));
+
+    //6º passo: total pendente líquido, quanto já foi recebido do rateio e o total de cada portador
+    const totalPendente = arredondar(lancamentosPendentes.reduce((total, lancamento) => total + valorLiquidoDaCompra(lancamento), 0));
+    const totalRecebido = arredondar(lancamentosPendentes.reduce((total, lancamento) => total + recebidoDaCompra(lancamento.id_transacao), 0));
     const mapaPessoas = {};
     lancamentosPendentes.forEach((lancamento) => {
       const nomePessoa = lancamento.portador ?? SEM_PORTADOR;
       mapaPessoas[nomePessoa] ??= { nome: nomePessoa, total: 0, quantidade: 0 };
-      mapaPessoas[nomePessoa].total += Number(lancamento.valor);
+      mapaPessoas[nomePessoa].total += valorLiquidoDaCompra(lancamento);
       mapaPessoas[nomePessoa].quantidade += 1;
     });
-
-    //6º passo: arredonda em 2 casas e ordena do maior para o menor valor
-    const arredondar = (valor) => Math.round(valor * 100) / 100;
     const porPessoa = Object.values(mapaPessoas)
       .map((pessoa) => ({ nome: pessoa.nome, total: arredondar(pessoa.total), quantidade: pessoa.quantidade }))
       .sort((a, b) => b.total - a.total);
-    const totalPendente = arredondar(lancamentosPendentes.reduce((total, lancamento) => total + Number(lancamento.valor), 0));
 
     //retorna as pendências
     return httpResponse.success(res, 'Pendências geradas com sucesso!', {
@@ -316,15 +336,39 @@ async function relatorioPendencias(req, res) {
         dataVencimento: cabecalhoEncontrado.data_vencimento
       },
       totalPendente,
+      recebidoRateio: totalRecebido,
       quantidadePendente: lancamentosPendentes.length,
       porPessoa,
       //o que falta pagar, item a item (do mais antigo para o mais recente)
-      lancamentos: lancamentosPendentes.map((lancamento) => ({
-        dataCompra: lancamento.data_compra,
-        estabelecimento: lancamento.estabelecimento,
-        parcela: lancamento.parcela,
-        valor: Number(lancamento.valor)
-      }))
+      //a receber = o que as outras pessoas ainda devem (partes não absorvidas, sem o que já pagaram)
+      aReceber: arredondar(lancamentosPendentes.reduce((total, lancamento) => {
+        const partes = partesPorCompra[lancamento.id_transacao] ?? [];
+        return total + partes.filter((parte) => !parte.absorvido)
+          .reduce((soma, parte) => soma + Math.max(Number(parte.valor_previsto) - Number(parte.valor_pago), 0), 0);
+      }, 0)),
+      lancamentos: lancamentosPendentes.map((lancamento) => {
+        const partes = partesPorCompra[lancamento.id_transacao] ?? [];
+        return {
+          dataCompra: lancamento.data_compra,
+          estabelecimento: lancamento.estabelecimento,
+          parcela: lancamento.parcela,
+          valor: Number(lancamento.valor),
+          recebido: recebidoDaCompra(lancamento.id_transacao),
+          valorLiquido: valorLiquidoDaCompra(lancamento),
+          //rateio: null se a compra não é rachada; senão quem já pagou e quanto falta de cada um
+          rateio: partes.length === 0 ? null : partes.map((parte) => {
+            const previsto = Number(parte.valor_previsto);
+            const pago = Number(parte.valor_pago);
+            return {
+              nome: parte.nome,
+              previsto,
+              pago,
+              falta: parte.absorvido ? 0 : arredondar(Math.max(previsto - pago, 0)),
+              absorvido: parte.absorvido
+            };
+          })
+        };
+      })
     });
 
   } catch (error) {

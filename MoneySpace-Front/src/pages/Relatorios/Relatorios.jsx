@@ -19,6 +19,7 @@ import {
   montarTextoSemanal,
   gerarPdfRelatorioPendencias,
   montarTextoPendencias,
+  descreverParteRateio,
   compartilharRelatorioPdf
 } from '../../utils/relatorioFatura';
 import { moeda } from '../../utils/formatar';
@@ -235,6 +236,9 @@ export default function Relatorios() {
             <Indicador rotulo="Na hora (pago)" valor={moeda(relatorio.resumo.totalNaHora)} />
             <Indicador rotulo="Pendente" valor={moeda(relatorio.resumo.totalPendente)} />
             <Indicador rotulo="No fechamento" valor={moeda(relatorio.resumo.totalNoFechamento)} />
+            {relatorio.resumo.recebidoRateio > 0 && (
+              <Indicador rotulo="Já recebido do rateio (abate a reserva)" valor={moeda(relatorio.resumo.recebidoRateio)} />
+            )}
             <Indicador rotulo="Saldo da reserva" valor={moeda(relatorio.resumo.saldoReserva)} />
             <Indicador
               rotulo={relatorio.resumo.sobraOuFalta >= 0 ? 'Sobra na reserva' : 'Falta na reserva'}
@@ -306,7 +310,10 @@ export default function Relatorios() {
           </Card>
 
           <div className="grid grid-cols-2 gap-3">
-            <Indicador rotulo="Para pagar" valor={moeda(relatorioPendencias.totalPendente)} destaque />
+            <Indicador rotulo="Total pendente" valor={moeda(relatorioPendencias.totalPendente)} destaque />
+            {relatorioPendencias.aReceber > 0 && (
+              <Indicador rotulo="Falta receber do rateio" valor={moeda(relatorioPendencias.aReceber)} />
+            )}
             <Indicador rotulo="Lançamentos pendentes" valor={String(relatorioPendencias.quantidadePendente)} />
           </div>
 
@@ -333,8 +340,16 @@ export default function Relatorios() {
                   <div className="min-w-0">
                     <p className="truncate">{item.estabelecimento}{item.parcela && item.parcela !== '-' ? ` (${item.parcela})` : ''}</p>
                     <p className="text-xs text-muted">{item.dataCompra}</p>
+                  {item.rateio && item.rateio.map((p) => (
+                    <p key={p.nome} className="text-xs text-muted">
+                      {p.nome}: {descreverParteRateio(p)}
+                    </p>
+                  ))}
                   </div>
-                  <span className="shrink-0 font-semibold tabular-nums">{moeda(item.valor)}</span>
+                  <div className="shrink-0 text-right">
+                    <span className="block font-semibold tabular-nums">{moeda(item.recebido > 0 ? item.valorLiquido : item.valor)}</span>
+                    {item.recebido > 0 && <span className="block text-xs text-muted tabular-nums">total {moeda(item.valor)}</span>}
+                  </div>
                 </div>
               ))}
             </Card.Content>

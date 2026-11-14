@@ -181,6 +181,20 @@ async function resumoPeriodoRepository(db, competencia, idCartao) {
             COALESCE(SUM(a.valor) FILTER (WHERE a.status_transacao = 'na hora'), 0) AS pago,
             COALESCE(SUM(a.valor) FILTER (WHERE a.status_transacao = 'pendente'), 0) AS pendente,
             COALESCE(SUM(a.valor) FILTER (WHERE a.status_transacao = 'no fechamento'), 0) AS fechamento,
+            COALESCE((
+                SELECT SUM(c.valor)
+                FROM fatura_rateio_pagamento c
+                INNER JOIN fatura_rateio d ON d.id_rateio = c.id_rateio
+                INNER JOIN fatura_transacao e ON e.id_transacao = d.id_transacao
+                WHERE d.absorvido = false
+                AND e.status_transacao = 'pendente'
+                AND e.id_fatura IN (
+                    SELECT f.id_fatura
+                    FROM fatura_corpo f
+                    WHERE f.id_familia = current_setting('app.current_familia_id', true)::uuid
+                    AND f.competencia = $1
+                    AND ($2::uuid IS NULL OR f.id_cartao = $2::uuid))
+                AND c.id_familia = current_setting('app.current_familia_id', true)::uuid), 0) AS recebido_rateio,
             COALESCE(SUM(a.valor), 0) AS total
         FROM fatura_transacao a
         WHERE a.id_familia = current_setting('app.current_familia_id', true)::uuid

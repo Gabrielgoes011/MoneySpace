@@ -24,12 +24,15 @@ import {
   buscarUsuarioPorIdRepository,
   buscarPapelRepository,
   criarUsuarioRepository,
-  atualizarUsuarioRepository
+  atualizarUsuarioRepository,
+  buscarSenhaHashRepository,
+  atualizarSenhaRepository
 } from './cadUsuario.Repositories.js';
 
 //#region => Constantes
 const PERFIS_VALIDOS = ['ADMIN', 'MEMBRO'];
 const SENHA_TAMANHO_MINIMO = 6;
+const SENHA_TAMANHO_MINIMO_TROCA = 8; // troca feita pelo próprio usuário exige mais
 const SALT_ROUNDS_BCRYPT = 10;
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 //#endregion
@@ -243,10 +246,141 @@ async function atualizarUsuario(req, res) {
 }
 //#endregion
 
+//#region => minha conta (dados do próprio usuário logado)
+//resposta: { usuario: { id, nome, email, cpf, role, is_master, mfa_ativo, dt_cadastro } }
+async function buscarMinhaConta(req, res) {
+  try {
+    //1º passo: busca o próprio usuário pela família atual
+    const usuarioEncontrado = await buscarUsuarioPorIdRepository(req.db, req.user.id);
+
+    if (!usuarioEncontrado) {
+      return httpResponse.notFound(res, 'Usuário não encontrado.');
+    }
+
+    //retorna os dados da conta (sem senha e sem segredo do 2FA)
+    return httpResponse.success(res, 'Conta carregada com sucesso!', { usuario: usuarioEncontrado }, 200);
+
+  } catch (error) {
+    console.error('Erro ao buscar a conta na etapa do controller:', error);
+    const secureMessage = pgErrorHandler(error, 'Erro ao carregar sua conta.');
+    return httpResponse.error(res, secureMessage);
+  }
+}
+
+//body: { nome, email, cpf } (quem é membro edita os próprios dados; perfil e senha não entram aqui)
+async function atualizarMinhaConta(req, res) {
+  try {
+    //1º passo: recebe os dados do body
+    const dados = {
+      nome: req.body.nome,
+      email: req.body.email,
+      cpf: req.body.cpf
+    };
+
+    //2º passo: normaliza (sem espaços, e-mail minúsculo, CPF só com números)
+    const nomeNormalizado = String(dados.nome ?? '').trim();
+    const emailNormalizado = String(dados.email ?? '').trim().toLowerCase();
+    const cpfNormalizado = String(dados.cpf ?? '').replace(/\D/g, '');
+
+    //3º passo: valida cada campo
+    if (nomeNormalizado.length < 2) {
+      return httpResponse.validationError(res, 'Informe o nome (mínimo 2 letras).');
+    }
+    if (!REGEX_EMAIL.test(emailNormalizado)) {
+      return httpResponse.validationError(res, 'Informe um e-mail válido.');
+    }
+    if (!validarCpf(cpfNormalizado)) {
+      return httpResponse.validationError(res, 'Informe um CPF válido.');
+    }
+
+    //4º passo: grava só nome, e-mail e CPF (role e senha ficam como estão)
+    const usuarioAtualizado = await atualizarUsuarioRepository(req.db, req.user.id, {
+      nome: nomeNormalizado,
+      email: emailNormalizado,
+      cpf: cpfNormalizado,
+      role: undefined,
+      senhaHash: undefined
+    });
+
+    if (!usuarioAtualizado) {
+      return httpResponse.notFound(res, 'Usuário não encontrado.');
+    }
+
+    //retorna a conta já atualizada
+    return httpResponse.success(res, 'Dados atualizados com sucesso!', { usuario: usuarioAtualizado }, 200);
+
+  } catch (error) {
+    console.error('Erro ao atualizar a conta na etapa do controller:', error);
+    if (error.code === CODIGO_UNIQUE_VIOLATION) {
+      return httpResponse.conflict(res, 'Já existe outro usuário com este e-mail ou CPF.');
+    }
+    const secureMessage = pgErrorHandler(error, 'Erro ao atualizar sua conta.');
+    return httpResponse.error(res, secureMessage);
+  }
+}
+//#endregion
+
+//#region => trocar a senha do próprio usuário
+//body: { senhaAtual, senhaNova } (qualquer membro troca a própria senha)
+//a senha atual é conferida antes de gravar. Erro de senha atual vira 400 (não 401:
+//o front encerra a sessão com 401 e o usuário não deve ser deslogado por errar a senha)
+async function trocarMinhaSenha(req, res) {
+  try {
+    //1º passo: recebe os campos do body
+    const dados = {
+      senhaAtual: req.body.senhaAtual,
+      senhaNova: req.body.senhaNova
+    };
+
+    //2º passo: os dois campos são obrigatórios
+    if (!dados.senhaAtual || !dados.senhaNova) {
+      return httpResponse.validationError(res, 'Informe a senha atual e a nova senha.');
+    }
+
+    //3º passo: a nova senha precisa ter tamanho mínimo e ser diferente da atual
+    if (String(dados.senhaNova).length < SENHA_TAMANHO_MINIMO_TROCA) {
+      return httpResponse.validationError(res, `A nova senha deve ter no mínimo ${SENHA_TAMANHO_MINIMO_TROCA} caracteres.`);
+    }
+    if (dados.senhaNova === dados.senhaAtual) {
+      return httpResponse.validationError(res, 'A nova senha precisa ser diferente da atual.');
+    }
+
+    //4º passo: busca o hash atual de quem está logado
+    const usuarioAtual = await buscarSenhaHashRepository(req.db, req.user.id);
+
+    if (!usuarioAtual) {
+      return httpResponse.notFound(res, 'Usuário não encontrado.');
+    }
+
+    //5º passo: confere a senha atual com bcrypt
+    const senhaAtualConfere = await bcrypt.compare(String(dados.senhaAtual), usuarioAtual.senha);
+
+    if (!senhaAtualConfere) {
+      return httpResponse.validationError(res, 'A senha atual está incorreta.');
+    }
+
+    //6º passo: grava só o hash da nova senha (nunca a senha pura)
+    const senhaHash = await bcrypt.hash(String(dados.senhaNova), SALT_ROUNDS_BCRYPT);
+    await atualizarSenhaRepository(req.db, req.user.id, senhaHash);
+
+    //retorna sucesso (a sessão continua válida)
+    return httpResponse.success(res, 'Senha alterada com sucesso!', {}, 200);
+
+  } catch (error) {
+    console.error('Erro ao trocar a senha na etapa do controller:', error);
+    const secureMessage = pgErrorHandler(error, 'Erro ao trocar a senha.');
+    return httpResponse.error(res, secureMessage);
+  }
+}
+//#endregion
+
 //#region => exportação das funções
 export {
   listarUsuarios,
   criarUsuario,
-  atualizarUsuario
+  atualizarUsuario,
+  buscarMinhaConta,
+  atualizarMinhaConta,
+  trocarMinhaSenha
 }
 //#endregion

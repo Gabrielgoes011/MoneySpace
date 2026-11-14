@@ -6,10 +6,14 @@
 import { Router } from 'express';
 import verificaToken from '../../../middleware/auth/verificaToken.js';
 import { rlsMiddleware } from '../../../middleware/rlsMiddleware.js';
+import { loginLimiter } from '../../../middleware/rateLimiter.js';
 import {
   listarUsuarios,
   criarUsuario,
-  atualizarUsuario
+  atualizarUsuario,
+  buscarMinhaConta,
+  atualizarMinhaConta,
+  trocarMinhaSenha
 } from './cadUsuario.controller.js';
 
 const router = Router();
@@ -24,5 +28,16 @@ router.post('/usuarios', verificaToken, rlsMiddleware, criarUsuario);
 router.post('/usuarios/editar/:id', verificaToken, rlsMiddleware, atualizarUsuario);
 //params: id do usuário a ser editado
 //body: { nome?, cpf?, email?, role?, senha? } (só ADMIN)
+
+// Dados da conta do próprio usuário logado
+router.get('/usuarios/minha-conta', verificaToken, rlsMiddleware, buscarMinhaConta);
+//resposta: { usuario }
+
+router.post('/usuarios/minha-conta', verificaToken, rlsMiddleware, atualizarMinhaConta);
+//body: { nome, email, cpf }
+
+// Troca a senha do próprio usuário logado (limitado: conta tentativas erradas da senha atual)
+router.post('/usuarios/trocar-senha', verificaToken, rlsMiddleware, loginLimiter, trocarMinhaSenha);
+//body: { senhaAtual, senhaNova } (senhaNova com no mínimo 8 caracteres)
 
 export default router;

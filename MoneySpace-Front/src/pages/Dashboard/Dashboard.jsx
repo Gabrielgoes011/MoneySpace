@@ -73,12 +73,14 @@ export default function Dashboard() {
     ? dados.cartoes
     : dados.cartoes.filter((cartao) => cartao.id === cartaoAtual);
 
-  // Resumo no formato dos cards (meta = o que deveria estar na reserva: na hora + pendente).
+  // Resumo no formato dos cards (meta = o que deveria estar na reserva: na hora + pendente líquido).
+  // `pendente` já vem descontado do que as outras pessoas já pagaram do rateio (recebidoRateio).
   const meta = dados.resumo.pago + dados.resumo.pendente;
   const resumo = {
     bruto: dados.resumo.total,
     pago: dados.resumo.pago,
     pendente: dados.resumo.pendente,
+    recebido: dados.resumo.recebidoRateio,
     fechamento: dados.resumo.fechamento,
     meta,
     diferenca: dados.resumo.saldoReserva - meta,

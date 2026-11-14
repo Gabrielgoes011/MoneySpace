@@ -6,7 +6,7 @@ export default function ResumoFaturaFaixa({ c }) {
   const itens = [
     { rotulo: 'Total da fatura', valor: c.bruto, destaque: true },
     { rotulo: 'Na hora', valor: c.pago },
-    { rotulo: 'Pendente', valor: c.pendente },
+    { rotulo: 'Pendente', valor: c.pendente, sub: c.recebido > 0 ? `já recebido do rateio ${moeda(c.recebido)}` : null },
     { rotulo: 'No fechamento', valor: c.fechamento },
   ];
 
@@ -19,6 +19,7 @@ export default function ResumoFaturaFaixa({ c }) {
             <span className={`font-bold tabular-nums ${item.destaque ? 'text-xl text-accent' : 'text-lg'}`}>
               {moeda(item.valor)}
             </span>
+            {item.sub && <span className="text-xs text-accent">{item.sub}</span>}
           </Card.Content>
         </Card>
       ))}

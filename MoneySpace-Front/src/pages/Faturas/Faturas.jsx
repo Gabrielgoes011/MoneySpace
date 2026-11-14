@@ -31,6 +31,7 @@ import CriarFaturaModal from './componentes/CriarFaturaModal';
 import LancamentoFormModal from './componentes/LancamentoFormModal';
 import ExcluirLancamentoModal from './componentes/ExcluirLancamentoModal';
 import ProximaFaturaModal from './componentes/ProximaFaturaModal';
+import RateioModal from './componentes/RateioModal';
 
 const CHAVE_CONFERENCIA = 'faturas:conferencia';
 
@@ -56,6 +57,8 @@ export default function Faturas() {
   const modalLancar = useOverlayState();
   const modalExcluir = useOverlayState();
   const modalProxima = useOverlayState();
+  const modalRateio = useOverlayState();
+  const [lancamentoRateio, setLancamentoRateio] = useState(null); // compra aberta na tela do rateio
   const [lancamentoEditando, setLancamentoEditando] = useState(null); // null = criar novo
   const [lancamentoExcluindo, setLancamentoExcluindo] = useState(null);
   // Conferência aberta/recolhida no PC (fica lembrado entre as visitas).
@@ -142,6 +145,8 @@ export default function Faturas() {
     parcela: lancamento.parcela,
     categoria: lancamento.categoria,
     status: statusDoBanco(lancamento.statusTransacao),
+    rateado: !!lancamento.rateado,
+    recebido: lancamento.recebido ?? 0,
   }));
   const c = calcular(lancamentos, saldoNumero);
   const visiveis = filtro === 'todos' ? lancamentos : lancamentos.filter((t) => t.status === filtro);
@@ -216,6 +221,12 @@ export default function Faturas() {
     modalExcluir.open();
   };
 
+  // Abre a tela do rateio da compra (vale também com a fatura fechada)
+  const abrirRateio = (tr) => {
+    setLancamentoRateio(tr);
+    modalRateio.open();
+  };
+
   // Depois de criar, a nova fatura vira a selecionada.
   const aoCriarFatura = (faturaCriada) => {
     carregarFaturasCartao(false);
@@ -271,6 +282,7 @@ export default function Faturas() {
         onCategoria={mudarCategoria}
         onEditar={abrirEditarLancamento}
         onExcluir={pedirExclusao}
+        onRateio={abrirRateio}
       />
     </section>
   );
@@ -411,6 +423,11 @@ export default function Faturas() {
             state={modalExcluir}
             lancamento={lancamentoExcluindo}
             onExcluido={carregarFatura}
+          />
+          <RateioModal
+            state={modalRateio}
+            lancamento={lancamentoRateio}
+            onMudou={carregarFatura}
           />
           <ProximaFaturaModal
             state={modalProxima}

@@ -106,6 +106,7 @@ export function AuthProvider({ children }) {
   // Valor que será compartilhado com toda a aplicação
   const value = {
     user,
+    setUser, // a tela "Minha conta" atualiza nome/e-mail/2FA sem recarregar
     token,
     loading,
     login,

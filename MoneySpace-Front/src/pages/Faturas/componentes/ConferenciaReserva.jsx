@@ -20,7 +20,8 @@ export default function ConferenciaReserva({ c, saldo, onSaldo, onSalvarSaldo, f
       </Card.Header>
       <Card.Content className="gap-1">
         <Linha rotulo="Compras quitadas (na hora)" valor={moeda(c.pago)} />
-        <Linha rotulo="Compras pendentes (pendente)" valor={moeda(c.pendente)} />
+        <Linha rotulo="Compras pendentes (pendente)" valor={moeda(c.pendenteBruto)} />
+        {c.recebido > 0 && <Linha rotulo="(−) Já recebido do rateio" valor={moeda(c.recebido)} />}
         <Linha forte rotulo="Total que DEVE estar na reserva" valor={moeda(c.meta)} />
 
         <div className="my-3">

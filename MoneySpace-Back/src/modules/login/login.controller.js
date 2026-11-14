@@ -358,10 +358,26 @@ async function confirmar2faController(req, res) {
 async function desativar2faController(req, res) {
   try {
     const usuarioId = req.user.id;
+    const { codigo } = req.body;
+
+    if (!codigo) {
+      return httpResponse.validationError(res, 'Informe o código do autenticador para desativar o 2FA.');
+    }
 
     const usuario = await findUserById(usuarioId);
     if (!usuario) {
       return httpResponse.error(res, 'Usuário não encontrado.', 404);
+    }
+
+    // Só desativa com o código atual do app: quem tem apenas a sessão não consegue tirar a proteção.
+    const secret = decryptText(usuario.mfa_secreto);
+    if (!usuario.mfa_ativo || !secret) {
+      return httpResponse.validationError(res, 'O 2FA não está ativado.');
+    }
+
+    const valido = speakeasy.totp.verify({ secret, encoding: 'base32', token: codigo, window: 1 });
+    if (!valido) {
+      return httpResponse.validationError(res, 'Código inválido. Verifique o app do autenticador.');
     }
 
     // Desativa o 2FA e apaga o segredo salvo.

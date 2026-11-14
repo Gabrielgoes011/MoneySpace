@@ -13,7 +13,7 @@ import { ThemeProvider } from './context/ThemeContext';
 
 // Páginas
 import Login from './pages/Login/Login';
-import Welcome from './pages/Welcome/Welcome';
+import Conta from './pages/Conta/Conta';
 import AppLayout from './components/Layout/AppLayout';
 import Faturas from './pages/Faturas/Faturas';
 import Relatorios from './pages/Relatorios/Relatorios';
@@ -62,7 +62,7 @@ function AppRoutes() {
         element={isAuthenticated ? <Navigate to="/" /> : <Login />}
       />
 
-      {/* Welcome - protegida */}
+      {/* Minha conta - protegida */}
       {isAuthenticated ? (
         <Route element={<AppLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -74,7 +74,7 @@ function AppRoutes() {
           <Route path="/cadastros/cartoes" element={<Cartoes />} />
           <Route path="/cadastros/contas" element={<EmBreve titulo="Contas" />} />
           <Route path="/cadastros/categorias" element={<Categorias />} />
-          <Route path="/perfil" element={<Welcome />} />
+          <Route path="/perfil" element={<Conta />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       ) : (

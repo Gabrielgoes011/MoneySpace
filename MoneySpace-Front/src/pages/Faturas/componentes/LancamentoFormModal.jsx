@@ -1,6 +1,6 @@
 // Lançamento manual de gasto na fatura aberta. Com `lancamento`, o mesmo formulário edita.
 import { useState } from 'react';
-import { Modal, Button, Input, Label, TextField, toast } from '@heroui/react';
+import { Modal, Button, Input, Label, Switch, TextField, toast } from '@heroui/react';
 import Seletor from '../../../components/Seletor';
 import { cadastrarLancamento, editarLancamento } from '../../../services/faturaService';
 import { STATUS } from '../../../utils/statusFatura';
@@ -29,6 +29,7 @@ function valoresIniciais(lancamento, usuarios, categorias) {
       categoria: SEM_VALOR,
       parcela: '-',
       statusTransacao: 'pendente',
+      rateado: false,
     };
   }
 
@@ -44,6 +45,7 @@ function valoresIniciais(lancamento, usuarios, categorias) {
     categoria: categoriaCadastrada?.valor ?? SEM_VALOR,
     parcela: lancamento.parcela ?? '-',
     statusTransacao: lancamento.status,
+    rateado: !!lancamento.rateado,
   };
 }
 
@@ -68,6 +70,7 @@ function Formulario({ state, idFatura, lancamento, usuarios, categorias, onSalvo
           categoria: f.categoria === SEM_VALOR ? '' : f.categoria,
           parcela: f.parcela,
           statusTransacao: statusBanco,
+          rateado: f.rateado,
         })
       : cadastrarLancamento({
           idFatura,
@@ -78,6 +81,7 @@ function Formulario({ state, idFatura, lancamento, usuarios, categorias, onSalvo
           categoria: f.categoria === SEM_VALOR ? undefined : f.categoria,
           parcela: f.parcela,
           statusTransacao: statusBanco,
+          rateado: f.rateado,
         });
 
     setSalvando(true);
@@ -132,6 +136,18 @@ function Formulario({ state, idFatura, lancamento, usuarios, categorias, onSalvo
               onChange={(k) => setF((x) => ({ ...x, statusTransacao: k }))} className="w-full" />
           </div>
         </div>
+
+        <Switch isSelected={f.rateado} onChange={(marcado) => setF((x) => ({ ...x, rateado: marcado }))}>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+          <Switch.Content>
+            <Label>Racha esta compra entre pessoas</Label>
+            <span className="text-xs text-muted">
+              A linha fica destacada. Depois de salvar, use o botão Rateio da linha para dividir e acompanhar os pagamentos.
+            </span>
+          </Switch.Content>
+        </Switch>
       </Modal.Body>
       <Modal.Footer>
         <Button variant="secondary" onPress={state.close} type="button">Cancelar</Button>

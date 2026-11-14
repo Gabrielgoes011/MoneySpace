@@ -94,7 +94,9 @@ async function buscarDashboard(req, res) {
       cartoes,
       resumo: {
         pago: Number(resumo.pago),
-        pendente: Number(resumo.pendente),
+        //pendente líquido: já descontado o que as outras pessoas já pagaram do rateio (o cartão cobra o cheio)
+        pendente: Number(resumo.pendente) - Number(resumo.recebido_rateio),
+        recebidoRateio: Number(resumo.recebido_rateio),
         fechamento: Number(resumo.fechamento),
         total: totalGeral,
         saldoReserva: Number(saldoReserva.saldo_reserva)

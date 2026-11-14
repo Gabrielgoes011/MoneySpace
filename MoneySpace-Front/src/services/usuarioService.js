@@ -29,6 +29,12 @@ export async function listarUsuarios() {
   return api.get('/usuarios').then((r) => r.data.data).catch(comMensagem);
 }
 
+// Troca a senha do próprio usuário logado. Erro (senha atual errada, senha curta) vira mensagem.
+export async function trocarMinhaSenha({ senhaAtual, senhaNova }) {
+  if (DEMO) return atraso({});
+  return api.post('/usuarios/trocar-senha', { senhaAtual, senhaNova }).then((r) => r.data.data).catch(comMensagem);
+}
+
 export async function criarUsuario(dados) {
   if (DEMO) {
     const novo = { ...dados, id: `u${Date.now()}`, is_master: false, mfa_ativo: false, dt_cadastro: new Date().toISOString() };
