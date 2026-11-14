@@ -38,6 +38,17 @@ function validarCpf(cpf) {
 }
 //#endregion
 
+//#region => mascarar cpf
+//esconde o começo e o fim e deixa só o meio: 52998224725 -> ***.982.247-**
+//recebe o CPF só com números e devolve null se não tiver 11 dígitos (nunca devolve o CPF inteiro)
+function mascararCpf(cpf) {
+  const cpfSoNumeros = String(cpf ?? '').replace(/\D/g, '');
+  if (cpfSoNumeros.length !== 11) return null;
+
+  return `***.${cpfSoNumeros.slice(3, 6)}.${cpfSoNumeros.slice(6, 9)}-**`;
+}
+//#endregion
+
 //#region => exportação das funções
-export { validarCpf };
+export { validarCpf, mascararCpf };
 //#endregion

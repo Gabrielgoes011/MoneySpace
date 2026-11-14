@@ -74,6 +74,9 @@ async function buscarUsuarioPorIdRepository(db, id) {
 }
 
 //busca o papel de quem está fazendo a requisição (para checar autorização)
+//não filtra por família de propósito: o dono do app (master) opera dentro de OUTRA família
+//e precisa ser reconhecido. O RLS só deixa ver a própria linha de quem chamou (acesso_usuario_proprio)
+//ou as linhas da família do contexto, e o id aqui é sempre o do token (req.user.id).
 async function buscarPapelRepository(db, id) {
 
     //executa a consulta SQL para buscar role e is_master
@@ -81,7 +84,6 @@ async function buscarPapelRepository(db, id) {
         SELECT id, role, is_master
         FROM usuario
         WHERE id = $1
-        AND id_familia = current_setting('app.current_familia_id', true)::uuid
         LIMIT 1`, [id]
     );
 

@@ -6,8 +6,8 @@
 //
 // Autorização (o JWT não carrega `role`: o papel é lido do banco):
 //   - listar:    qualquer membro da família
-//   - cadastrar: só ADMIN da família (ou dono do app)
-//   - excluir:   só ADMIN da família (ou dono do app)
+//   - cadastrar: só Admin da família (ou dono do app)
+//   - excluir:   só Admin da família (ou dono do app)
 //
 // Regras: 1 cartão principal por família (o anterior é desmarcado antes de gravar),
 // o dono precisa ser um usuário da mesma família, e 4 dígitos no final do cartão.
@@ -42,8 +42,8 @@ async function listarCartoes(req, res) {
       buscarPapelRepository(req.db, req.user.id)
     ]);
 
-    //2º passo: diz se quem chamou pode cadastrar (ADMIN da família ou dono do app)
-    const podeCadastrar = papelSolicitante?.role === 'ADMIN' || papelSolicitante?.is_master === true;
+    //2º passo: diz se quem chamou pode cadastrar (Admin da família ou dono do app)
+    const podeCadastrar = papelSolicitante?.role === 'Admin' || papelSolicitante?.is_master === true;
 
     //retorna a lista
     return httpResponse.success(res, 'Cartões listados com sucesso!', {
@@ -63,9 +63,9 @@ async function listarCartoes(req, res) {
 //body: { nome, final, idUsuario, limite?, diaFechamento?, diaVencimento?, principal? }
 async function criarCartao(req, res) {
   try {
-    //1º passo: só ADMIN da família cadastra cartão
+    //1º passo: só Admin da família cadastra cartão
     const papelSolicitante = await buscarPapelRepository(req.db, req.user.id);
-    const solicitanteEhAdmin = papelSolicitante?.role === 'ADMIN' || papelSolicitante?.is_master === true;
+    const solicitanteEhAdmin = papelSolicitante?.role === 'Admin' || papelSolicitante?.is_master === true;
 
     if (!solicitanteEhAdmin) {
       return httpResponse.forbidden(res, 'Apenas administradores da família podem cadastrar cartões.');
@@ -155,9 +155,9 @@ async function criarCartao(req, res) {
 //params: :id do cartão
 async function excluirCartao(req, res) {
   try {
-    //1º passo: só ADMIN da família exclui cartão
+    //1º passo: só Admin da família exclui cartão
     const papelSolicitante = await buscarPapelRepository(req.db, req.user.id);
-    const solicitanteEhAdmin = papelSolicitante?.role === 'ADMIN' || papelSolicitante?.is_master === true;
+    const solicitanteEhAdmin = papelSolicitante?.role === 'Admin' || papelSolicitante?.is_master === true;
 
     if (!solicitanteEhAdmin) {
       return httpResponse.forbidden(res, 'Apenas administradores da família podem excluir cartões.');

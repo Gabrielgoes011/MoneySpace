@@ -49,8 +49,8 @@ export function gerarPdfRelatorioFatura(relatorio) {
     ['Pendente', moeda(resumo.totalPendente)],
     ['No fechamento', moeda(resumo.totalNoFechamento)],
     ['Saldo da reserva', moeda(resumo.saldoReserva)],
-    ...(resumo.recebidoRateio > 0 ? [['(-) Ja recebido do rateio', moeda(resumo.recebidoRateio)]] : []),
-    [resumo.recebidoRateio > 0 ? 'Meta da reserva (na hora + pendente - recebido do rateio)' : 'Meta da reserva (na hora + pendente)', moeda(resumo.metaReserva)],
+    ...(resumo.recebidoRateio > 0 ? [['(-) Ja recebido da divisao', moeda(resumo.recebidoRateio)]] : []),
+    [resumo.recebidoRateio > 0 ? 'Meta da reserva (na hora + pendente - recebido da divisao)' : 'Meta da reserva (na hora + pendente)', moeda(resumo.metaReserva)],
     [resumo.sobraOuFalta >= 0 ? 'Sobra na reserva' : 'Falta na reserva', moeda(Math.abs(resumo.sobraOuFalta))],
   ];
   autoTable(doc, {
@@ -380,8 +380,8 @@ export function montarTextoPendencias(relatorio) {
     titulo,
     `Vence ${cabecalho.dataVencimento}`,
     `Total pendente: *${moeda(totalPendente)}* (${quantidadePendente} lançamento(s))`,
-    ...(relatorio.recebidoRateio > 0 ? [`Já recebido do rateio: ${moeda(relatorio.recebidoRateio)}`] : []),
-    ...(aReceber > 0 ? [`Falta receber do rateio: *${moeda(aReceber)}*`] : []),
+    ...(relatorio.recebidoRateio > 0 ? [`Já recebido da divisão: ${moeda(relatorio.recebidoRateio)}`] : []),
+    ...(aReceber > 0 ? [`Falta receber da divisão: *${moeda(aReceber)}*`] : []),
     '',
     'Resumo por usuário:',
     porPessoa.map((p) => `- ${p.nome}: ${moeda(p.total)}`).join('\n'),

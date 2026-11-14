@@ -6,8 +6,8 @@ import { cpfMascara } from '../../../utils/formatar';
 import { criarUsuario, atualizarUsuario } from '../../../services/usuarioService';
 
 const PERFIS = [
-  { id: 'MEMBRO', nome: 'Membro (só visualiza)' },
-  { id: 'ADMIN', nome: 'Administrador (gerencia usuários)' },
+  { id: 'Membro', nome: 'Membro (só visualiza)' },
+  { id: 'Admin', nome: 'Administrador (gerencia usuários)' },
 ];
 
 function Campo({ rotulo, ...props }) {
@@ -25,8 +25,8 @@ function Formulario({ usuario, state, onSalvo }) {
   const [f, setF] = useState({
     nome: usuario?.nome ?? '',
     email: usuario?.email ?? '',
-    cpf: cpfMascara(usuario?.cpf ?? ''),
-    role: usuario?.role ?? 'MEMBRO',
+    cpf: '', // a API não devolve o CPF inteiro: ao editar, só vai para o back se digitarem um novo
+    role: usuario?.role ?? 'Membro',
     senha: '',
   });
   const [salvando, setSalvando] = useState(false);
@@ -34,7 +34,8 @@ function Formulario({ usuario, state, onSalvo }) {
 
   const salvar = (e) => {
     e.preventDefault();
-    const dados = { nome: f.nome, email: f.email, cpf: f.cpf, role: f.role };
+    const dados = { nome: f.nome, email: f.email, role: f.role };
+    if (f.cpf) dados.cpf = f.cpf;
     if (f.senha) dados.senha = f.senha;
 
     setSalvando(true);
@@ -57,8 +58,9 @@ function Formulario({ usuario, state, onSalvo }) {
       <Modal.Body className="space-y-3 p-1">
         <Campo rotulo="Nome" value={f.nome} onChange={set('nome')} required autoComplete="off" />
         <Campo rotulo="E-mail (login)" type="email" value={f.email} onChange={set('email')} required autoComplete="off" />
-        <Campo rotulo="CPF" inputMode="numeric" value={f.cpf} placeholder="000.000.000-00"
-          onChange={(e) => setF((x) => ({ ...x, cpf: cpfMascara(e.target.value) }))} required />
+        <Campo rotulo={editando ? 'CPF (deixe vazio para manter)' : 'CPF'} inputMode="numeric" value={f.cpf}
+          placeholder={editando ? `Atual: ${usuario.cpf_mascarado ?? '—'}` : '000.000.000-00'}
+          onChange={(e) => setF((x) => ({ ...x, cpf: cpfMascara(e.target.value) }))} required={!editando} />
         <div>
           <Label>Perfil</Label>
           <Seletor rotulo="Perfil" itens={PERFIS} valor={f.role} onChange={(k) => setF((x) => ({ ...x, role: k }))} className="w-full" />

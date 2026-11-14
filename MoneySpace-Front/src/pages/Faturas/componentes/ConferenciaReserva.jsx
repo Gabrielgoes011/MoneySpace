@@ -1,6 +1,7 @@
 import { Card, InputGroup, Button, Chip } from '@heroui/react';
 import { FiLock, FiUnlock } from 'react-icons/fi';
-import { moeda } from '../../../utils/formatar';
+import { moedaTela as moeda } from '../../../utils/formatar';
+import { usePrivacidade } from '../../../context/PrivacidadeContext';
 
 const Linha = ({ rotulo, valor, forte }) => (
   <div className={`flex justify-between gap-4 py-1.5 text-sm ${forte ? 'font-semibold' : ''}`}>
@@ -11,6 +12,7 @@ const Linha = ({ rotulo, valor, forte }) => (
 
 // `saldo` é o texto digitado; `onSaldo` atualiza a tela; `onSalvarSaldo` grava no banco ao sair do campo.
 export default function ConferenciaReserva({ c, saldo, onSaldo, onSalvarSaldo, fechada, onFechar, onAbrir }) {
+  const { ocultar } = usePrivacidade();
   const coberta = c.diferenca >= 0;
   return (
     <Card>
@@ -21,7 +23,7 @@ export default function ConferenciaReserva({ c, saldo, onSaldo, onSalvarSaldo, f
       <Card.Content className="gap-1">
         <Linha rotulo="Compras quitadas (na hora)" valor={moeda(c.pago)} />
         <Linha rotulo="Compras pendentes (pendente)" valor={moeda(c.pendenteBruto)} />
-        {c.recebido > 0 && <Linha rotulo="(−) Já recebido do rateio" valor={moeda(c.recebido)} />}
+        {c.recebido > 0 && <Linha rotulo="(−) Já recebido da divisão" valor={moeda(c.recebido)} />}
         <Linha forte rotulo="Total que DEVE estar na reserva" valor={moeda(c.meta)} />
 
         <div className="my-3">
@@ -30,6 +32,8 @@ export default function ConferenciaReserva({ c, saldo, onSaldo, onSalvarSaldo, f
             <InputGroup.Prefix>R$</InputGroup.Prefix>
             <InputGroup.Input
               id="saldo-reserva"
+              type={ocultar ? 'password' : 'text'}
+              autoComplete="off"
               inputMode="decimal"
               value={String(saldo)}
               onChange={(e) => onSaldo(e.target.value)}

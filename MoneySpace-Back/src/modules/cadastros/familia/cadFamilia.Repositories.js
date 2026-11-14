@@ -1,57 +1,64 @@
 // ========================================
-// REPOSITORY: FAMÍLIA
+// REPOSITORY: FAMÍLIAS (gestão do dono do app)
 // ========================================
-// Camada de acesso ao banco. Só queries SQL da tabela `familia`.
-// A lógica (validação, orquestração) fica no controller (2 camadas).
+// Camada de acesso ao banco. Todas as funções recebem `db` = req.db (client da transação com o contexto de RLS).
+// O role da aplicação NÃO lê nem cria famílias de outras famílias direto: tudo passa pelas funções
+// SECURITY DEFINER da migration 007, que conferem no banco se quem chamou é master (usuario.is_master).
+// Regra: SQL 100% literal e parametrizado ($1, $2). Nada de concatenar string na query.
 
-import { openDb } from '../../../config/configDb.js';
+//#region => query para saber se quem chamou é o dono do app
+async function verificarMasterRepository(db) {
 
-//#region => Queries para familia
+    //executa a função que lê o usuário do contexto e confere is_master no banco
+    const resultado = await db.query(`
+        SELECT fn_master_eh_master() AS master
+    `);
 
-// Lista as famílias (id + nome), mais recentes primeiro.
-async function listarFamilias() {
-  const db = await openDb();
-  const result = await db.query(
-    `SELECT id, nome, dt_cadastro FROM familia ORDER BY dt_cadastro DESC`
-  );
-  return result.rows;
+    //retorna true ou false
+    return resultado.rows[0].master === true;
 }
-
-// Busca uma família pelo id.
-async function buscarFamiliaPorId(id) {
-  const db = await openDb();
-  const result = await db.query(
-    `SELECT id, nome, dt_cadastro FROM familia WHERE id = $1 LIMIT 1`,
-    [id]
-  );
-  return result.rows[0];
-}
-
-// Cria uma família e retorna o registro criado.
-async function criarFamilia({ nome }) {
-  const db = await openDb();
-  const result = await db.query(
-    `INSERT INTO familia (nome) VALUES ($1) RETURNING id, nome, dt_cadastro`,
-    [nome]
-  );
-  return result.rows[0];
-}
-
-// Atualiza o nome da família por id. Retorna o registro atualizado (ou undefined).
-async function atualizarFamilia(id, { nome }) {
-  const db = await openDb();
-  const result = await db.query(
-    `UPDATE familia SET nome = $1 WHERE id = $2 RETURNING id, nome, dt_cadastro`,
-    [nome, id]
-  );
-  return result.rows[0];
-}
-
 //#endregion
 
+//#region => query para listar todas as famílias (só master)
+async function listarFamiliasRepository(db) {
+
+    //executa a função de listagem (já devolve os totais de usuários e cartões)
+    const resultado = await db.query(`
+        SELECT
+            a.id,
+            a.nome,
+            a.dt_cadastro,
+            a.total_usuarios,
+            a.total_cartoes
+        FROM fn_master_listar_familias() a
+    `);
+
+    //retorna a lista de famílias
+    return resultado.rows;
+}
+//#endregion
+
+//#region => query para cadastrar família com o primeiro administrador (só master)
+//`adminSenhaHash` já vem com bcrypt
+async function cadastrarFamiliaRepository(db, { nome, adminNome, adminCpf, adminEmail, adminSenhaHash }) {
+
+    //executa a função que cria a família e o usuário Admin na mesma chamada
+    const resultado = await db.query(`
+        SELECT
+            a.nova_familia_id,
+            a.novo_usuario_id
+        FROM fn_master_criar_familia($1, $2, $3, $4, $5) a
+    `, [nome, adminNome, adminCpf, adminEmail, adminSenhaHash]);
+
+    //retorna os ids criados
+    return resultado.rows[0];
+}
+//#endregion
+
+//#region => exportação das funções
 export {
-  listarFamilias,
-  buscarFamiliaPorId,
-  criarFamilia,
-  atualizarFamilia,
+    verificarMasterRepository,
+    listarFamiliasRepository,
+    cadastrarFamiliaRepository
 };
+//#endregion

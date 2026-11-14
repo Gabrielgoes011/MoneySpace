@@ -5,6 +5,7 @@
 // Cuida de adicionar o token automaticamente a toda requisição
 
 import axios from 'axios';
+import { lerFamiliaAtiva } from './familiaAtiva';
 
 // Cria instância do Axios
 const api = axios.create({
@@ -28,6 +29,13 @@ api.interceptors.request.use((config) => {
   if (token) {
     // Adiciona token no header Authorization
     config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  // Dono do app dentro de outra família: o back confere no banco se ele é master.
+  // A pergunta "sou master?" não leva o header (senão um header velho daria 403).
+  const familiaAtiva = lerFamiliaAtiva();
+  if (familiaAtiva && !String(config.url || '').includes('/familias/acesso')) {
+    config.headers['X-Familia-Ativa'] = familiaAtiva.id;
   }
 
   return config;

@@ -10,6 +10,8 @@ código real, o CÓDIGO vence: corrija este arquivo.
   Exceção: quando ele AUTORIZA explicitamente (foi o caso do módulo de usuários, 2026-11-09).
 
 ## Regras de manutenção
+- GIT: NUNCA fazer `git commit` (nem `add`, `push`, `reset`, etc. que registre ou publique algo) sem o Gabriel pedir
+  explicitamente naquela hora. Só leitura (`status`, `log`, `diff`) é livre. Terminou a tarefa: avisa e espera.
 - Ler antes de codar. Atualizar ESTADO/ESTRUTURA/DÍVIDAS sempre que algo mudar.
 - Fatos e caminhos exatos, sem enfeite.
 
@@ -28,6 +30,21 @@ App financeiro familiar multi-tenant (1 `familia` = 1 tenant, RLS do PostgreSQL 
 ### Banco
 - snake_case; PK `id` UUID; FK `id_*`; dinheiro `NUMERIC(14,2)` (o `pg` devolve STRING -> `Number()`).
 - `db/script.sql` é a fonte da verdade do schema. Sem pasta de migrations: quando precisar, começam em `001`.
+- CHECKLIST DE RLS (obrigatório em TODA mudança no banco: tabela, coluna, query nova ou função):
+  1. Tabela nova com dado de família: `id_familia UUID NOT NULL REFERENCES familia(id)`, `ENABLE` + `FORCE ROW LEVEL SECURITY`,
+     policy `FOR ALL USING (id_familia = current_setting('app.current_familia_id', true)::uuid)` e índice em `id_familia`.
+     Tabela global (sem família, como `utilitario`) só com decisão explícita e SEM dado de usuário.
+  2. `GRANT` mínimo ao `app_moneyspace` na MESMA migration (só os comandos que o código usa; sem DELETE se não há exclusão).
+     Tabela nova sem GRANT quebra o app, e GRANT demais abre brecha.
+  3. Query nova: roda via `req.db` (rota com `verificaToken, rlsMiddleware`), nunca `openDb()`/`pool` em rota de dados.
+     Exceção: login, que usa as funções `fn_login_*`. Função `SECURITY DEFINER` nova: `SET search_path = public, pg_temp`,
+     `REVOKE ALL ... FROM PUBLIC`, `GRANT EXECUTE` só ao `app_moneyspace`, e devolve o mínimo (nunca `SELECT *`).
+  4. INSERT grava `id_familia` com `current_setting('app.current_familia_id', true)::uuid`, nunca valor vindo do body.
+  5. Conferir com o role do app (não com o dono, que tem BYPASSRLS e ignora tudo): sem contexto = 0 linhas, família A não vê
+     nem grava na B. Rodar as consultas dentro de `BEGIN ... ROLLBACK` com `SET LOCAL ROLE app_moneyspace`.
+  6. Atualizar `db/script.sql` (mesma definição da migration) e este arquivo. Migration com `;` em comentário quebra no DBeaver/Neon:
+     NUNCA usar `;` dentro de comentário SQL.
+  7. A migration é aplicada pelo Gabriel (como dono). A IA só simula (com ROLLBACK) e nunca troca senha nem URL de produção.
 - ATENÇÃO: o banco do Neon pode estar DEFASADO em relação ao script (ex.: `usuario` NÃO tem `ativo` nem `ultimo_acesso`). Conferir `information_schema.columns` antes de usar coluna do script.
 ### Backend — padrão REAL em uso: 2 camadas (controller + repository), SEM service
 - `*.controller.js`: req/res + lógica/validação. `*.Repositories.js`: único com SQL. `*.routes.js`.
@@ -57,7 +74,7 @@ App financeiro familiar multi-tenant (1 `familia` = 1 tenant, RLS do PostgreSQL 
   Exemplo: `const dados = { nome: req.body.nome, cpf: req.body.cpf };` e depois só `dados.nome`, `dados.cpf`.
 - REGRA DE NEGÓCIO NÃO É HELPER: if que decide (permissão, validação de campo, bloqueio, estado) fica DENTRO
   da função do controller, mesmo que repita. NUNCA `_verificaX()` com regra de negócio dentro.
-  Exemplo: checar se é ADMIN e validar o e-mail ficam escritos dentro de `criarUsuario`.
+  Exemplo: checar se é Admin e validar o e-mail ficam escritos dentro de `criarUsuario`.
 - HELPERS (`_nome`, não exportados) são só transformação técnica (ex.: calcular dígito). Onde ficam:
   - Usado só em um arquivo: fica DENTRO desse arquivo, com `_`. Ex.: `_calcularDigitoVerificador` em `utils/cpf.js`.
   - Função técnica genérica, sem conhecer o domínio (usada em 1 ou mais módulos): `src/utils/` com arquivo próprio
@@ -115,7 +132,7 @@ MoneySpace-Back/
   src/config/{env,configDb}.js · src/middleware/{auth/verificaToken,rateLimiter,rlsMiddleware}.js
   src/modules/app.js                      app Express (monta /api)
   src/modules/login/                      controller, repositories, routes
-  src/modules/cadastros/familia/          cadFamilia.* (esqueleto parcial)
+  src/modules/cadastros/familia/          cadFamilia.{controller,Repositories,routes}.js (IMPLEMENTADO, só dono do app: GET /familias/acesso, GET /familias, POST /familias/cadastrar)
   src/modules/cadastros/usuario/          cadUsuario.{controller,Repositories,routes}.js  (IMPLEMENTADO)
   src/modules/cadastros/categoria/        cadCategoria.{controller,Repositories,routes}.js (IMPLEMENTADO: GET/POST /categorias)
   src/modules/cadastros/cartao/           cadCartao.{controller,Repositories,routes}.js (IMPLEMENTADO: GET /cartoes, POST /cartoes/cadastrar, POST /cartoes/deletar/:id)
@@ -133,14 +150,45 @@ MoneySpace-Front/
   src/utils/statusFatura.js               STATUS (chave da tela <-> valor do banco: 'na_hora' <-> 'na hora')
   src/components/Seletor.jsx              Select {id,nome}
   src/components/Layout/{AppLayout,MenuNavegacao,navegacao.js}
-  src/pages/{Login,Welcome(/perfil),EmBreve,Cadastros(hub),Dashboard,Faturas,Usuarios}
+  src/pages/{Login,Conta(/perfil),EmBreve,Cadastros(hub),Dashboard,Faturas,Usuarios,Cartoes,Categorias,Relatorios,Familias(só master)}
 ```
 Rotas do front: `/login` · `/dashboard` (padrão) · `/faturas` · `/cadastros` (hub) ·
-`/cadastros/usuarios` · `/cadastros/contas` e `/cadastros/categorias` (EmBreve) · `/perfil`.
+`/cadastros/usuarios` · `/cadastros/familias` (só master) · `/cadastros/contas` e `/cadastros/categorias` (EmBreve) · `/perfil`.
 Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/*`, `/familias`, `/usuarios`, `/categorias`, `/cartoes`, `/dashboard`, health.
 
 ## ESTADO
 - Login/2FA/logout: funcionando. NÃO existe desativar usuário (colunas `ativo`/`ultimo_acesso` não existem no Neon; decisão do Gabriel: por enquanto não quer).
+- RLS (2026-11-14): `migration-006-rls-role-app.sql` JÁ APLICADA no Neon (também em `db/script.sql`, seção 4.1). Cria o role
+  `app_moneyspace` (LOGIN, sem BYPASSRLS, não é dono), grants mínimos, FORCE RLS nas 8 tabelas e 3 funções SECURITY DEFINER
+  para o login (`fn_login_buscar_por_email`, `fn_login_buscar_por_id`, `fn_login_atualizar_2fa`). Antes dela o app conectava
+  como `neondb_owner` (BYPASSRLS), ou seja, o RLS NÃO valia. Testado: 41 cenários (sem contexto = 0 linhas, família A não vê
+  nem grava na B, login sem contexto). O app deve conectar com `app_moneyspace`; a URL do dono fica só para migrations/testes
+  (`DATABASE_URL_ADMIN`, nunca usada pelo app). Tabela nova exige `GRANT` ao `app_moneyspace` na própria migration.
+  FEITO: `login.repositories.js` agora usa as funções `fn_login_*` (testado com o role do app: por e-mail, por id, 2FA).
+  FEITO TAMBÉM (2026-11-14, autorizado): `rlsMiddleware` responde 401 sem `id_familia`/`id` no token (refresh token não vale como
+  acesso) e grava `app.current_user_id`; `cadFamilia` reescrito em 2 camadas (ver MASTER). `DATABASE_URL` de dev já usa o role do app.
+  PENDENTE: trocar a `DATABASE_URL` da Discloud (produção) para o role do app, só depois de validar no navegador.
+- MASTER (2026-11-14): `db/migrations/migration-007-master.sql` (também em `script.sql`, seção 4.2). Decisão do Gabriel: o dono do app
+  (`usuario.is_master`) gerencia famílias (A) e entra em outra família para ver/operar os dados dela (B), SEM auditoria por ora.
+  O role do app segue sem BYPASSRLS: o poder vem de `fn_master_eh_master()`, `fn_master_listar_familias()` e
+  `fn_master_criar_familia(nome, admin_nome, admin_cpf, admin_email, admin_senha_hash)` (cria família + 1º Admin), que leem o usuário de
+  `app.current_user_id` e recusam com 42501 quem não é master. Policy `acesso_usuario_proprio` deixa cada um ver a PRÓPRIA linha em
+  qualquer contexto (para o master continuar sendo reconhecido dentro de outra família). Simulado com ROLLBACK: 18 cenários OK.
+  STATUS: migration 007 APLICADA no Neon (Gabriel, 2026-11-14). Back e front feitos (autorizado pelo Gabriel).
+  BACK: `rlsMiddleware` aceita o header `x-familia-ativa`: confere `fn_master_eh_master()` (não master = 403, id inválido = 400,
+  família inexistente = 404) e troca `app.current_familia_id`. `buscarPapelRepository` NÃO filtra por família (o master precisa ser
+  reconhecido dentro de outra família). Rotas (`cadFamilia.{controller,Repositories,routes}.js`): `GET /familias/acesso` -> `{ master }`
+  (qualquer logado), `GET /familias` (só master) -> `{ familias[] }`, `POST /familias/cadastrar` body `{ nome, adminNome, adminCpf,
+  adminEmail, adminSenha }` (só master; senha mín. 8; 409 se e-mail/CPF existe). Removidos `POST /familias` e `PUT /familias/:id` (não havia checagem de papel).
+  Testado via HTTP contra o Neon (16 cenários: master, não master, token refresh, header inválido). O cadastro real de família e a troca de
+  família com 2 famílias NÃO foram exercitados pelo HTTP (só pela simulação do banco).
+  FRONT: `services/{familiaService,familiaAtiva}.js` (`api.js` manda `X-Familia-Ativa` do localStorage, menos em `/familias/acesso`),
+  `AuthContext` expõe `ehMaster` (null = verificando), tela `/cadastros/familias` (`pages/Familias`: lista, "Entrar", "Nova família"),
+  item "Famílias" só para master (`filtrarItens` em `navegacao.js`), faixa amarela "Você está vendo a família X" com "Voltar para a minha".
+  LIMITAÇÃO: dentro de outra família, "Minha conta" não funciona (a conta do master não pertence àquela família): voltar para a própria.
+  O 2FA do master ainda NÃO é exigido (o do Gabriel está desligado). NÃO testado no navegador.
+- Log de startup (2026-11-14): `server.js` imprime um bloco só (porta, ambiente, link da API em dev, estado do banco), SEM
+  host, usuário ou detalhes do banco, porque o log vai para o painel da Discloud. `verificarConexaoBanco()` fica em `configDb.js`.
 - Layout: topbar (3 linhas: PC = clique recolhe/mostra a lateral, hover abre painel preto com busca,
   grupos fechados, usuário/família/tema; celular = toque abre painel), lateral recolhível animada,
   grupo Cadastros com submenu animado, barra inferior no celular.
@@ -206,7 +254,7 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
   Testado com PGlite (fatura: 60 cenários).
 - Usuários (`/cadastros/usuarios`): família + lista (Table com custom cells; cards no celular), criar/editar
   (modal). Back: `GET /usuarios`, `POST /usuarios`, `POST /usuarios/editar/:id`.
-  Regras: listar = qualquer membro; criar/editar = ADMIN ou is_master; só master edita master; não pode
+  Regras: listar = qualquer membro; criar/editar = Admin ou is_master; só master edita master; não pode
   rebaixar a si mesmo; CPF validado (dígitos) e gravado só com números; senha bcrypt, mín. 6;
   e-mail/CPF duplicado -> 409. Resposta do GET: `{ familia, usuarios, pode_editar }`.
 - MINHA CONTA (`/perfil`, 2026-11-14; link "Minha conta" no bloco do usuário do menu do topo). Tela `pages/Conta/Conta.jsx`
@@ -219,6 +267,21 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
     atual (antes qualquer sessão desligava o 2FA; corrigido em 2026-11-14).
   Testado com PGlite: `testa_troca_senha` (13 cenários) e `testa_minha_conta` (9 cenários), TUDO OK.
   NÃO testado no navegador nem o 2FA ponta a ponta (depende do app autenticador).
+- PERFIL `usuario.role` (2026-11-14): os valores são `Admin` e `Membro` (NÃO mais ADMIN/MEMBRO, decisão do Gabriel: nada em maiúsculas).
+  `db/migrations/migration-008-role-formato.sql` converte os dados, troca o DEFAULT e o CHECK e recria `fn_master_criar_familia`
+  (a 007 guarda a versão antiga com 'ADMIN', a 008 sobrescreve). Código, front, `script.sql`, README e este arquivo já usam o formato novo.
+  STATUS: migration 008 escrita e simulada (6 cenários), AINDA NÃO aplicada no Neon. Até aplicar, só o dono do app (is_master) gerencia
+  usuários e cartões. Em produção: subir o código novo e aplicar a 008 em seguida.
+- CPF MASCARADO (2026-11-14, camada 1 de 2): `GET /usuarios`, `POST /usuarios` e `POST /usuarios/editar/:id` NÃO devolvem mais `cpf`,
+  só `cpf_mascarado` (`***.982.247-**`, `mascararCpf` em `utils/cpf.js`, `_ocultarCpf` no controller). O CPF inteiro só sai em
+  `GET/POST /usuarios/minha-conta` (o próprio dono). Editar usuário: CPF vazio mantém o atual. Camada 2 (cifrar no banco, migration 008
+  com `cpf_hash`) NÃO feita, depende de decidir se o CPF é necessário. CPF continua em texto no banco.
+- OLHINHO (2026-11-14, front): botão ao lado do tema esconde os valores em R$ das telas ("R$ ••••"). `context/PrivacidadeContext.jsx`,
+  `moedaTela` em `utils/formatar.js` (as telas importam `moedaTela as moeda`). PDF e texto copiado (WhatsApp) usam a `moeda` real.
+  Página nova que mostra R$ precisa chamar `usePrivacidade()` e usar `moedaTela`. Estado salvo em `localStorage` (`ocultarValores`).
+- NOME NA TELA (2026-11-14): para o usuário, "rateio" se chama "DIVISÃO" ("Divisão", "compra dividida", "já recebido da divisão",
+  "falta receber da divisão"; botão do card = "Divisão" com ícone de pessoas). No CÓDIGO, nas rotas e nas tabelas continua `rateio`
+  (decisão do Gabriel: tabelas ficam como estão). Texto novo para o usuário usa "divisão". Mensagens do BACK ainda dizem "rateio" (3 visíveis).
 - RATEIO (2026-11-14): compra rachada entre várias pessoas (da família ou de fora, só o NOME). EXIGE `db/migrations/migration-005-rateio.sql`
   aplicada no Neon (ainda NÃO aplicada; o Gabriel aplica no SQL Editor). Sem ela, a fatura inteira quebra (`fatura_transacao.rateado`).
   - Tabelas: `rateio_pessoa` (nomes por família, único sem diferença de maiúsculas), `fatura_rateio` (parte de uma pessoa em um
@@ -251,11 +314,11 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
 - PWA: manifest + service worker (só em produção; nunca cacheia `/api`) + ícones verdes (rascunho).
 - Cartões (back, 2026-11-10): `GET /cartoes` -> `{ cartoes, pode_cadastrar }` (qualquer membro; principal primeiro;
   sem arquivados); `POST /cartoes/cadastrar` body `{ nome, final, idUsuario, limite?, diaFechamento?, diaVencimento?, principal? }`
-  SÓ ADMIN da família (ou dono do app). Regras: `final` = 4 dígitos; dono precisa ser da mesma família; `principal`
+  SÓ Admin da família (ou dono do app). Regras: `final` = 4 dígitos; dono precisa ser da mesma família; `principal`
   desmarca o anterior na mesma transação; nome repetido na família -> 409. `usuario_cadastro` = `req.user.nome`.
   Testado com PGlite (17 cenários). A tabela `cartao` JÁ EXISTE no Neon (checado em 2026-11-10, com 1 linha).
   Front `/cadastros/cartoes` (lista, cadastrar e excluir): feito, build OK, NÃO testado no navegador.
-- EXCLUIR CARTÃO (2026-11-10): `POST /cartoes/deletar/:id`, SÓ ADMIN. Só exclui se NÃO houver lançamento
+- EXCLUIR CARTÃO (2026-11-10): `POST /cartoes/deletar/:id`, SÓ Admin. Só exclui se NÃO houver lançamento
   (`fatura_transacao`) nas faturas do cartão; faturas vazias do cartão são apagadas junto. Sem lançamento -> 200;
   com lançamento -> 409; cartão de outra família -> 404. Front: botão lixeira (só admin) + confirmação.
   Depende da `migration-002-fatura-cartao.sql` (adiciona `fatura_corpo.id_cartao`, FK ON DELETE RESTRICT).
@@ -281,6 +344,9 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
 - `README.md`, `MoneySpace-Back/Readme.md`, `MoneySpace-Front/README.md`, `DEPLOY_DISCLOUD.md` não revisados.
 - JWT sem `role`/`is_master`; autorização por papel só no módulo de usuários (consulta ao banco).
 - Edição de família (`PUT /familias/:id`) e listagem de famílias não checam papel.
+- `db/script.sql` tem `usuario.ativo`/`ultimo_acesso` e o índice `idx_fat_trans_categoria`, que NÃO existem no Neon (nenhuma
+  migration os cria). Decidir: apagar do script ou criar a migration 007.
+- Neon SQL Editor/DBeaver dividem o texto em cada `;`, inclusive em comentário: NUNCA usar `;` dentro de comentário SQL.
 - Ícones do PWA são provisórios.
 - Categorias: seed do `script.sql` está com maiúsculas/acentos ("Alimentação & Mercado") e a unique é por `(tipo, valor)`,
   então "outros" e "Outros" coexistem. Falta normalizar o seed/banco para minúsculo (e o `fatura_transacao.categoria`, que guarda o texto).

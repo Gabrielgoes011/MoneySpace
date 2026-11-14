@@ -2,91 +2,85 @@
 // REPOSITORY: LOGIN / AUTENTICAÇÃO
 // ========================================
 // Camada de acesso ao banco. Toda query do módulo de login mora aqui.
-// Mapeada 1:1 com a tabela `usuario` do script.sql do MoneySpace:
-//   - senha fica na coluna `senha` (hash bcrypt)
-//   - 2FA fica em `mfa_secreto` (segredo cifrado) e `mfa_ativo` (liga/desliga)
-//   - `id_familia` é essencial: vai no token e alimenta o RLS por request
+// O login roda ANTES de existir contexto de família (RLS), então não lê a tabela
+// `usuario` direto: o role da aplicação (app_moneyspace) não enxerga nada sem contexto.
+// As consultas passam por 3 funções SECURITY DEFINER criadas na migration 006:
+//   - fn_login_buscar_por_email: traz o usuário com hash da senha e campos de 2FA
+//   - fn_login_buscar_por_id: igual, mas SEM a senha
+//   - fn_login_atualizar_2fa: grava segredo e/ou liga-desliga do 2FA
+// `id_familia` é essencial: vai no token e alimenta o RLS por request.
 
 import { openDb } from '../../config/configDb.js';
 
-//#region => Queries para login
-
-// Busca o usuário pelo e-mail. Traz tudo que o login precisa, inclusive o hash
-// da senha e os campos de 2FA (a validação acontece na camada de service).
+//#region => queries para login
+//busca o usuário pelo e-mail (traz o hash da senha, a validação acontece no controller)
 async function findUserByEmail(email) {
     const db = await openDb();
 
-    // JOIN com familia para já trazer o NOME da família (exibido no app).
-    const result = await db.query(
-        `SELECT u.id, u.id_familia, u.nome, u.email, u.senha, u.mfa_secreto, u.mfa_ativo,
-                f.nome AS familia_nome
-           FROM usuario u
-           JOIN familia f ON f.id = u.id_familia
-          WHERE LOWER(u.email) = LOWER($1)
-          LIMIT 1`,
-        [email]
-    );
+    //executa a função de login (já devolve o nome da família)
+    const result = await db.query(`
+        SELECT
+            a.id,
+            a.id_familia,
+            a.nome,
+            a.email,
+            a.senha,
+            a.mfa_secreto,
+            a.mfa_ativo,
+            a.familia_nome
+        FROM fn_login_buscar_por_email($1) a
+    `, [email]);
 
+    //retorna um registro ou undefined
     return result.rows[0];
 }
 
-// Busca o usuário pelo id (usado no /me e no refresh). Não traz a senha.
+//busca o usuário pelo id (usado no /me, no refresh e no 2FA). Não traz a senha.
 async function findUserById(userId) {
     const db = await openDb();
 
-    const result = await db.query(
-        `SELECT u.id, u.id_familia, u.nome, u.email, u.mfa_secreto, u.mfa_ativo,
-                f.nome AS familia_nome
-           FROM usuario u
-           JOIN familia f ON f.id = u.id_familia
-          WHERE u.id = $1
-          LIMIT 1`,
-        [userId]
-    );
+    //executa a função de login por id
+    const result = await db.query(`
+        SELECT
+            a.id,
+            a.id_familia,
+            a.nome,
+            a.email,
+            a.mfa_secreto,
+            a.mfa_ativo,
+            a.familia_nome
+        FROM fn_login_buscar_por_id($1) a
+    `, [userId]);
 
+    //retorna um registro ou undefined
     return result.rows[0];
 }
-
 //#endregion
 
-//#region => Queries para 2FA
-
-// Atualiza os campos de 2FA do usuário. Aceita atualizar o segredo e/ou o
-// liga-desliga, montando o UPDATE dinamicamente conforme o que foi passado.
+//#region => queries para 2FA
+//atualiza o segredo e/ou o liga-desliga do 2FA. Campo não informado (undefined) fica como está.
 async function updateUser2fa(userId, updates) {
     const db = await openDb();
 
-    const fields = [];
-    const values = [];
-    let index = 1;
-
-    if (updates.mfa_secreto !== undefined) {
-        fields.push(`mfa_secreto = $${index++}`);
-        values.push(updates.mfa_secreto);
-    }
-    if (updates.mfa_ativo !== undefined) {
-        fields.push(`mfa_ativo = $${index++}`);
-        values.push(updates.mfa_ativo);
-    }
-
-    if (!fields.length) {
+    //1º passo: precisa de pelo menos uma alteração
+    if (updates.mfa_secreto === undefined && updates.mfa_ativo === undefined) {
         throw new Error('Nenhuma atualização de 2FA fornecida.');
     }
 
-    values.push(userId);
-    await db.query(
-        `
-        UPDATE usuario 
-        SET ${fields.join(', ')} 
-        WHERE id = $${index}`,
-        values
-    );
-}
+    //2º passo: a função precisa saber se o segredo deve mudar (permite gravar NULL ao desativar)
+    const alterarSegredo = updates.mfa_secreto !== undefined;
 
+    //3º passo: executa a função de atualização
+    await db.query(`
+        SELECT fn_login_atualizar_2fa($1::uuid, $2::boolean, $3::text, $4::boolean)
+    `, [userId, alterarSegredo, updates.mfa_secreto ?? null, updates.mfa_ativo ?? null]);
+}
 //#endregion
 
+//#region => exportação das funções
 export {
     findUserByEmail,
     findUserById,
     updateUser2fa,
 };
+//#endregion

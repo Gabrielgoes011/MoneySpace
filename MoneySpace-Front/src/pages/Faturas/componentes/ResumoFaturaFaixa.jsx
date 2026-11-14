@@ -1,12 +1,12 @@
 // Faixa compacta com os totais da fatura, no topo da coluna dos lançamentos (PC).
 import { Card } from '@heroui/react';
-import { moeda } from '../../../utils/formatar';
+import { moedaTela as moeda } from '../../../utils/formatar';
 
 export default function ResumoFaturaFaixa({ c }) {
   const itens = [
     { rotulo: 'Total da fatura', valor: c.bruto, destaque: true },
     { rotulo: 'Na hora', valor: c.pago },
-    { rotulo: 'Pendente', valor: c.pendente, sub: c.recebido > 0 ? `já recebido do rateio ${moeda(c.recebido)}` : null },
+    { rotulo: 'Pendente', valor: c.pendente, sub: c.recebido > 0 ? `já recebido da divisão ${moeda(c.recebido)}` : null },
     { rotulo: 'No fechamento', valor: c.fechamento },
   ];
 

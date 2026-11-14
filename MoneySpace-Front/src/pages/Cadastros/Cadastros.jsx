@@ -1,11 +1,13 @@
 // Hub de cadastros (útil no celular, onde não há lateral).
 import { Link } from 'react-router-dom';
 import { Card } from '@heroui/react';
-import { ITENS } from '../../components/Layout/navegacao';
-
-const filhos = ITENS.find((i) => i.to === '/cadastros').filhos;
+import { filtrarItens } from '../../components/Layout/navegacao';
+import { useAuth } from '../../context/AuthContext';
 
 export default function Cadastros() {
+  const { ehMaster } = useAuth();
+  const filhos = filtrarItens(ehMaster).find((i) => i.to === '/cadastros').filhos;
+
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Cadastros</h1>

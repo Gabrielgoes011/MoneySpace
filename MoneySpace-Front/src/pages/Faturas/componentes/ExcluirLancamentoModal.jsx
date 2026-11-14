@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Modal, Button, toast } from '@heroui/react';
 import { excluirLancamento } from '../../../services/faturaService';
-import { moeda } from '../../../utils/formatar';
+import { moedaTela as moeda } from '../../../utils/formatar';
 
 export default function ExcluirLancamentoModal({ state, lancamento, onExcluido }) {
   const [excluindo, setExcluindo] = useState(false);

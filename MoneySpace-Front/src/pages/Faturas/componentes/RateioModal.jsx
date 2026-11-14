@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Modal, Button, Card, Chip, Input, Label, Spinner, TextField, toast } from '@heroui/react';
 import { FiPlus, FiTrash2, FiDollarSign, FiEdit2, FiUserX, FiRotateCcw } from 'react-icons/fi';
 import useIsMobile from '../../../hooks/useIsMobile';
-import { moeda, dataCurta } from '../../../utils/formatar';
+import { moedaTela as moeda, dataCurta } from '../../../utils/formatar';
 import {
   buscarRateio,
   cadastrarParte,
@@ -126,7 +126,7 @@ function ParteRateio({ parte, portador, onExecutar }) {
             </Button>
             <Button isIconOnly size="sm" variant="ghost" aria-label={`Remover ${parte.nome}`}
               isDisabled={parte.valorPago > 0}
-              onPress={() => rodar(excluirParte(parte.id), 'Pessoa removida do rateio.')}>
+              onPress={() => rodar(excluirParte(parte.id), 'Pessoa removida da divisão.')}>
               <FiTrash2 size={14} />
             </Button>
           </div>
@@ -209,14 +209,14 @@ function Conteudo({ state, lancamento, onMudou }) {
 
   const incluirPessoa = async (e) => {
     e.preventDefault();
-    const deuCerto = await executar(cadastrarParte({ idLancamento: lancamento.id, nome, valor }), 'Pessoa incluída no rateio.');
+    const deuCerto = await executar(cadastrarParte({ idLancamento: lancamento.id, nome, valor }), 'Pessoa incluída na divisão.');
     if (deuCerto) { setNome(''); setValor(''); }
   };
 
   if (erro) {
     return (
       <>
-        <Modal.Header><Modal.Heading>Rateio</Modal.Heading></Modal.Header>
+        <Modal.Header><Modal.Heading>Divisão</Modal.Heading></Modal.Header>
         <Modal.Body><p className="text-danger">{erro}</p></Modal.Body>
         <Modal.Footer><Button variant="secondary" onPress={state.close}>Fechar</Button></Modal.Footer>
       </>
@@ -233,7 +233,7 @@ function Conteudo({ state, lancamento, onMudou }) {
     <>
       <Modal.Header>
         <div className="min-w-0">
-          <Modal.Heading className="truncate">Rateio · {rateio.lancamento.estabelecimento}</Modal.Heading>
+          <Modal.Heading className="truncate">Divisão · {rateio.lancamento.estabelecimento}</Modal.Heading>
           <p className="text-sm text-muted">
             {dataCurta(rateio.lancamento.dataCompra)} · {moeda(rateio.lancamento.valor)} · adiantou: {portador ?? 'sem portador'}
           </p>
@@ -262,7 +262,7 @@ function Conteudo({ state, lancamento, onMudou }) {
 
         {partes.length === 0 && (
           <p className="rounded-xl border border-dashed border-separator p-6 text-center text-sm text-muted">
-            Ninguém no rateio ainda. Inclua as pessoas abaixo, cada uma com a sua parte.
+            Ninguém na divisão ainda. Inclua as pessoas abaixo, cada uma com a sua parte.
           </p>
         )}
 

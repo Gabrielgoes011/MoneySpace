@@ -64,31 +64,35 @@ pool.on('error', (error, client) => {
     }
 });
 
-setTimeout(() => {
-    (async () => {
-        const ambiente = process.env.NODE_ENV || 'development';
-        const ambienteFormatado = ambiente.toUpperCase();
+//#region => verificação da conexão no startup
+//testa a conexão uma vez e devolve só o necessário para o banner (sem host, usuário nem senha)
+async function verificarConexaoBanco() {
+    //1º passo: sem URL não há o que testar
+    if (!process.env.DATABASE_URL) {
+        return { conectado: false, motivo: 'DATABASE_URL ausente' };
+    }
 
-        console.log(`\n📍 AMBIENTE: ${ambienteFormatado}`);
-        console.log(`📋 Carregado de: .env.${ambiente}\n`);
-
-        if (!process.env.DATABASE_URL) {
-            console.error('❌ ERRO: Variável de ambiente DATABASE_URL ausente!');
-            return;
-        }
+    try {
+        //2º passo: abre uma conexão e confere se o role respeita o RLS
+        const client = await pool.connect();
 
         try {
-            const client = await pool.connect();
-            console.log(`✅ Banco de dados PostgreSQL conectado com sucesso!`);
-            console.log(`✅ Conexão estabelecida no ambiente: ${ambienteFormatado}\n`);
+            const resultado = await client.query(`
+                SELECT rolbypassrls AS ignora_rls
+                FROM pg_roles
+                WHERE rolname = current_user
+            `);
+
+            return { conectado: true, ignoraRls: resultado.rows[0]?.ignora_rls === true };
+        } finally {
             client.release();
-        } catch (error) {
-            console.warn('⚠️ Conexão inicial com o PostgreSQL indisponível no momento.');
-            console.warn(`   Ambiente: ${ambienteFormatado}`);
-            console.warn(`   Motivo: ${error.message}`);
         }
-    })();
-}, 500);
+    } catch (error) {
+        //só o código do erro: a mensagem do driver pode trazer o host do banco
+        return { conectado: false, motivo: error.code || 'erro de conexão' };
+    }
+}
+//#endregion
 
 export async function openDb() {
     const store = dbContext.getStore();
@@ -100,4 +104,4 @@ export async function openDb() {
     return pool;
 }
 
-export { pool };
+export { pool, verificarConexaoBanco };

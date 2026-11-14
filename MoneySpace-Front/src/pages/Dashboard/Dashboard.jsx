@@ -1,5 +1,6 @@
 // Painel principal. Tudo vem de GET /dashboard (cartões, resumo, quem gasta e categorias).
 // Ao abrir, o back escolhe o cartão principal; trocar o cartão ou a competência recarrega o painel.
+import { usePrivacidade } from '../../context/PrivacidadeContext';
 import { useEffect, useState } from 'react';
 import { Spinner, toast } from '@heroui/react';
 import Seletor from '../../components/Seletor';
@@ -21,6 +22,7 @@ function nomeCompetencia(competencia) {
 }
 
 export default function Dashboard() {
+  usePrivacidade(); // refaz o desenho quando o olhinho (ocultar valores) muda
   const [dados, setDados] = useState(null); // resposta do back
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);

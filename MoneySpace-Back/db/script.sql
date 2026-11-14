@@ -9,13 +9,13 @@
 --  ----------
 --  - snake_case em tudo. FK com prefixo `id_`. Dinheiro em NUMERIC(14,2)
 --    (o driver pg entrega como string -> use Number()).
---  - Datas do "fato" em DATE; carimbo de criação em TIMESTAMP (dt_cadastro).
+--  - Datas do "fato" em DATE, carimbo de criação em TIMESTAMP (dt_cadastro).
 --
 --  ARQUITETURA MULTI-TENANT (RLS)
 --  ------------------------------
 --  Cada família é um tenant isolado por `id_familia` + Row-Level Security.
 --  A cada request o backend injeta o contexto:
---      SELECT set_config('app.current_familia_id', '<uuid-do-JWT>', true);
+--      SELECT set_config('app.current_familia_id', '<uuid-do-JWT>', true)
 --  As policies filtram as linhas por esse contexto. A tabela `utilitario` é
 --  GLOBAL (opções de sistema, só leitura) -> NÃO tem id_familia nem RLS.
 -- ============================================================================
@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS familia (
 -- ----------------------------------------------------------------------------
 -- usuario: pessoas que logam. Pertencem a 1 família.
 --   `senha`       -> hash bcrypt (nunca o texto puro).
---   `mfa_secreto` -> segredo TOTP cifrado; `mfa_ativo` liga o 2FA.
---   `is_master` (GLOBAL) -> dono do app; `role` (POR FAMÍLIA) -> ADMIN | MEMBRO.
+--   `mfa_secreto` -> segredo TOTP cifrado, `mfa_ativo` liga o 2FA.
+--   `is_master` (GLOBAL) -> dono do app, `role` (POR FAMÍLIA) -> Admin | Membro.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS usuario (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -58,12 +58,12 @@ CREATE TABLE IF NOT EXISTS usuario (
     mfa_ativo BOOLEAN DEFAULT false,
 
     is_master BOOLEAN NOT NULL DEFAULT false,
-    role VARCHAR(20) NOT NULL DEFAULT 'MEMBRO',
+    role VARCHAR(20) NOT NULL DEFAULT 'Membro',
 
     ativo BOOLEAN DEFAULT true,                 -- desativar sem apagar
     ultimo_acesso TIMESTAMP,                    -- atualizado no login (opcional)
     dt_cadastro TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT chk_usuario_role CHECK (role IN ('ADMIN', 'MEMBRO'))
+    CONSTRAINT chk_usuario_role CHECK (role IN ('Admin', 'Membro'))
 );
 
 -- ----------------------------------------------------------------------------
@@ -310,6 +310,249 @@ CREATE POLICY acesso_fatura_rateio_pagamento ON fatura_rateio_pagamento
 
 
 -- ============================================================================
+-- 4.1 ROLE DA APLICAÇÃO + FUNÇÕES DE LOGIN (mesma definição de migration-006-rls-role-app.sql)
+-- ----------------------------------------------------------------------------
+-- O dono das tabelas (neondb_owner) tem BYPASSRLS e ignora as policies acima.
+-- A aplicação conecta como app_moneyspace (sem BYPASSRLS, sem ser dono).
+-- A senha do role NÃO fica aqui. Defina com ALTER ROLE app_moneyspace WITH PASSWORD ...
+-- Tabela nova no futuro precisa de GRANT para app_moneyspace na própria migration.
+-- ============================================================================
+
+-- 1º passo: role da aplicação (sem senha aqui, sem poder de ignorar RLS)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_moneyspace') THEN
+        CREATE ROLE app_moneyspace LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT;
+    END IF;
+END
+$$;
+
+-- permite ao dono usar SET ROLE app_moneyspace (usado só pelo testa_rls.mjs)
+DO $$
+BEGIN
+    EXECUTE format('GRANT app_moneyspace TO %I', current_user);
+END
+$$;
+
+-- 2º passo: permissões mínimas, tabela por tabela (o que o código realmente faz)
+GRANT USAGE ON SCHEMA public TO app_moneyspace;
+
+-- familia: ler e renomear. SEM INSERT/DELETE (o app não cria família).
+GRANT SELECT, UPDATE ON familia TO app_moneyspace;
+-- usuario: sem DELETE (não existe excluir usuário)
+GRANT SELECT, INSERT, UPDATE ON usuario TO app_moneyspace;
+GRANT SELECT, INSERT, UPDATE, DELETE ON cartao TO app_moneyspace;
+GRANT SELECT, INSERT, UPDATE, DELETE ON fatura_corpo TO app_moneyspace;
+GRANT SELECT, INSERT, UPDATE, DELETE ON fatura_transacao TO app_moneyspace;
+GRANT SELECT, INSERT ON rateio_pessoa TO app_moneyspace;
+GRANT SELECT, INSERT, UPDATE, DELETE ON fatura_rateio TO app_moneyspace;
+GRANT SELECT, INSERT, DELETE ON fatura_rateio_pagamento TO app_moneyspace;
+-- utilitario é global (sem RLS): ler e cadastrar categoria (só is_master, checado no controller)
+GRANT SELECT, INSERT ON utilitario TO app_moneyspace;
+
+-- 3º passo: o dono também respeita as policies (só vale para quem NÃO tem BYPASSRLS)
+ALTER TABLE familia                 FORCE ROW LEVEL SECURITY;
+ALTER TABLE usuario                 FORCE ROW LEVEL SECURITY;
+ALTER TABLE cartao                  FORCE ROW LEVEL SECURITY;
+ALTER TABLE fatura_corpo            FORCE ROW LEVEL SECURITY;
+ALTER TABLE fatura_transacao        FORCE ROW LEVEL SECURITY;
+ALTER TABLE rateio_pessoa           FORCE ROW LEVEL SECURITY;
+ALTER TABLE fatura_rateio           FORCE ROW LEVEL SECURITY;
+ALTER TABLE fatura_rateio_pagamento FORCE ROW LEVEL SECURITY;
+
+-- 4º passo: funções do login. Rodam com os direitos do DONO (SECURITY DEFINER) para
+-- enxergar usuario sem contexto de família, mas expõem só o que o login precisa.
+-- search_path fixo evita sequestro de função/tabela por outro schema.
+
+-- busca o usuário pelo e-mail (traz o hash da senha, só o login usa)
+CREATE OR REPLACE FUNCTION fn_login_buscar_por_email(p_email TEXT)
+RETURNS TABLE (
+    id UUID,
+    id_familia UUID,
+    nome TEXT,
+    email TEXT,
+    senha TEXT,
+    mfa_secreto TEXT,
+    mfa_ativo BOOLEAN,
+    familia_nome TEXT
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT
+        a.id,
+        a.id_familia,
+        a.nome::TEXT,
+        a.email::TEXT,
+        a.senha::TEXT,
+        a.mfa_secreto::TEXT,
+        COALESCE(a.mfa_ativo, false),
+        b.nome::TEXT
+    FROM usuario a
+    INNER JOIN familia b ON b.id = a.id_familia
+    WHERE LOWER(a.email) = LOWER(p_email)
+    LIMIT 1
+$$;
+
+-- busca o usuário pelo id (me, refresh e 2FA). NÃO devolve a senha.
+CREATE OR REPLACE FUNCTION fn_login_buscar_por_id(p_id UUID)
+RETURNS TABLE (
+    id UUID,
+    id_familia UUID,
+    nome TEXT,
+    email TEXT,
+    mfa_secreto TEXT,
+    mfa_ativo BOOLEAN,
+    familia_nome TEXT
+)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT
+        a.id,
+        a.id_familia,
+        a.nome::TEXT,
+        a.email::TEXT,
+        a.mfa_secreto::TEXT,
+        COALESCE(a.mfa_ativo, false),
+        b.nome::TEXT
+    FROM usuario a
+    INNER JOIN familia b ON b.id = a.id_familia
+    WHERE a.id = p_id
+    LIMIT 1
+$$;
+
+-- atualiza só os campos de 2FA. p_alterar_segredo = false mantém o segredo atual
+-- (permite gravar NULL ao desativar), p_mfa_ativo = NULL mantém o estado atual.
+CREATE OR REPLACE FUNCTION fn_login_atualizar_2fa(
+    p_id UUID,
+    p_alterar_segredo BOOLEAN,
+    p_mfa_secreto TEXT,
+    p_mfa_ativo BOOLEAN
+)
+RETURNS VOID
+LANGUAGE sql VOLATILE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    UPDATE usuario a
+    SET
+        mfa_secreto = CASE WHEN p_alterar_segredo THEN p_mfa_secreto ELSE a.mfa_secreto END,
+        mfa_ativo = COALESCE(p_mfa_ativo, a.mfa_ativo)
+    WHERE a.id = p_id
+$$;
+
+-- só o role da aplicação executa (PUBLIC não)
+REVOKE ALL ON FUNCTION fn_login_buscar_por_email(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_login_buscar_por_id(UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_login_atualizar_2fa(UUID, BOOLEAN, TEXT, BOOLEAN) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION fn_login_buscar_por_email(TEXT) TO app_moneyspace;
+GRANT EXECUTE ON FUNCTION fn_login_buscar_por_id(UUID) TO app_moneyspace;
+GRANT EXECUTE ON FUNCTION fn_login_atualizar_2fa(UUID, BOOLEAN, TEXT, BOOLEAN) TO app_moneyspace;
+
+
+-- ============================================================================
+-- 4.2 ACESSO MASTER (mesma definição de migration-007-master.sql)
+-- ----------------------------------------------------------------------------
+-- O role da aplicação não tem BYPASSRLS. O dono do app (usuario.is_master) ganha poder
+-- por funções que conferem is_master no banco e pela troca de contexto de família no back.
+-- ============================================================================
+
+-- 1º passo: o usuário logado sempre enxerga a própria linha, mesmo no contexto de outra família.
+-- Policies permissivas se somam (OR) com a acesso_usuario. NULLIF evita erro de cast quando o contexto está vazio.
+DROP POLICY IF EXISTS acesso_usuario_proprio ON usuario;
+CREATE POLICY acesso_usuario_proprio ON usuario
+    FOR SELECT USING (id = NULLIF(current_setting('app.current_user_id', true), '')::uuid);
+
+-- 2º passo: confere se quem está na requisição é master (lê o banco, ignora o RLS por ser DEFINER)
+CREATE OR REPLACE FUNCTION fn_master_eh_master()
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM usuario a
+        WHERE a.id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+        AND a.is_master = true
+    )
+$$;
+
+-- 3º passo: lista todas as famílias com totais (só master)
+CREATE OR REPLACE FUNCTION fn_master_listar_familias()
+RETURNS TABLE (
+    id UUID,
+    nome TEXT,
+    dt_cadastro TIMESTAMP,
+    total_usuarios INTEGER,
+    total_cartoes INTEGER
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF NOT fn_master_eh_master() THEN
+        RAISE EXCEPTION 'Acesso restrito ao dono do app.' USING ERRCODE = '42501';
+    END IF;
+
+    RETURN QUERY
+    SELECT
+        a.id,
+        a.nome::TEXT,
+        a.dt_cadastro,
+        (SELECT COUNT(*)::INTEGER FROM usuario b WHERE b.id_familia = a.id),
+        (SELECT COUNT(*)::INTEGER FROM cartao c WHERE c.id_familia = a.id)
+    FROM familia a
+    ORDER BY a.dt_cadastro DESC;
+END
+$$;
+
+-- 4º passo: cria a família e o primeiro usuário Admin dela, na mesma chamada (só master).
+-- O hash da senha vem pronto do back (bcrypt) e CPF/e-mail já chegam validados.
+-- E-mail ou CPF repetido estoura 23505 e a chamada inteira é desfeita.
+CREATE OR REPLACE FUNCTION fn_master_criar_familia(
+    p_nome TEXT,
+    p_admin_nome TEXT,
+    p_admin_cpf TEXT,
+    p_admin_email TEXT,
+    p_admin_senha_hash TEXT
+)
+RETURNS TABLE (
+    nova_familia_id UUID,
+    novo_usuario_id UUID
+)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_familia_id UUID;
+    v_usuario_id UUID;
+BEGIN
+    IF NOT fn_master_eh_master() THEN
+        RAISE EXCEPTION 'Acesso restrito ao dono do app.' USING ERRCODE = '42501';
+    END IF;
+
+    INSERT INTO familia (nome)
+    VALUES (p_nome)
+    RETURNING familia.id INTO v_familia_id;
+
+    INSERT INTO usuario (id_familia, nome, cpf, email, senha, role)
+    VALUES (v_familia_id, p_admin_nome, p_admin_cpf, LOWER(p_admin_email), p_admin_senha_hash, 'Admin')
+    RETURNING usuario.id INTO v_usuario_id;
+
+    RETURN QUERY SELECT v_familia_id, v_usuario_id;
+END
+$$;
+
+-- 5º passo: só o role da aplicação executa (PUBLIC não)
+REVOKE ALL ON FUNCTION fn_master_eh_master() FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_master_listar_familias() FROM PUBLIC;
+REVOKE ALL ON FUNCTION fn_master_criar_familia(TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION fn_master_eh_master() TO app_moneyspace;
+GRANT EXECUTE ON FUNCTION fn_master_listar_familias() TO app_moneyspace;
+GRANT EXECUTE ON FUNCTION fn_master_criar_familia(TEXT, TEXT, TEXT, TEXT, TEXT) TO app_moneyspace;
+
+
+-- ============================================================================
 -- 5. SEED (referência — descomente e ajuste para criar família + usuários)
 -- ----------------------------------------------------------------------------
 -- A senha é gravada já com hash bcrypt via pgcrypto: crypt('senha', gen_salt('bf')).
@@ -322,9 +565,9 @@ CREATE POLICY acesso_fatura_rateio_pagamento ON fatura_rateio_pagamento
 -- )
 -- INSERT INTO usuario (id_familia, nome, cpf, email, senha, is_master, role)
 -- SELECT id, 'Gabriel Goes',    '00000000000', 'gabriel@email.com',
---        crypt('TROQUE_A_SENHA', gen_salt('bf')), true,  'ADMIN'  FROM nova_familia
+--        crypt('TROQUE_A_SENHA', gen_salt('bf')), true,  'Admin'  FROM nova_familia
 -- UNION ALL
 -- SELECT id, 'Geovana Tavares',  '11111111111', 'geovana@email.com',
---        crypt('TROQUE_A_SENHA', gen_salt('bf')), false, 'MEMBRO' FROM nova_familia
--- ON CONFLICT (email) DO NOTHING;
+--        crypt('TROQUE_A_SENHA', gen_salt('bf')), false, 'Membro' FROM nova_familia
+-- ON CONFLICT (email) DO NOTHING
 -- ============================================================================

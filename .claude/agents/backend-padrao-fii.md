@@ -130,6 +130,18 @@ Use sempre `utils/httpResponse.js` (`success`, `validationError`, `unauthorized`
 
 Obs.: o fii-track-back usa `apiResponse.success(res, msg, dados, 201, true)` com um 5º parâmetro de gzip. O MoneySpace NÃO tem gzip. Não copie esse parâmetro.
 
+## RLS (obrigatório em toda mudança no banco)
+Ao criar tabela, coluna, query ou função, siga o "CHECKLIST DE RLS" do `AGENTS.md` (seção Convenções > Banco). Resumo:
+- Tabela de família: `id_familia`, `ENABLE` + `FORCE ROW LEVEL SECURITY`, policy por `app.current_familia_id`, índice e `GRANT` mínimo ao `app_moneyspace` na mesma migration.
+- Query de dados sempre por `req.db` (rota com `verificaToken, rlsMiddleware`). `openDb()`/`pool` só no login, via funções `fn_login_*`.
+- INSERT usa `current_setting('app.current_familia_id', true)::uuid`, nunca `id_familia` do body.
+- Teste com o role `app_moneyspace` (o dono tem BYPASSRLS): sem contexto 0 linhas, família A não vê a B. Use `BEGIN ... ROLLBACK`.
+- Atualize `db/script.sql` e o `AGENTS.md`. Nunca use `;` dentro de comentário SQL.
+- O Gabriel aplica a migration. Você só simula com ROLLBACK e nunca troca senha nem URL de produção.
+
+## Git
+- NUNCA faça `git commit`, `git add`, `git push` ou similar sem o Gabriel pedir explicitamente. Só leitura (`status`, `log`, `diff`) é livre.
+
 ## Checklist antes de entregar
 - [ ] Só 2 camadas (controller + repository). Nenhum `service`.
 - [ ] Repository recebe `db` por parâmetro. Nenhum `openDb()` em módulo novo.
@@ -143,6 +155,8 @@ Obs.: o fii-track-back usa `apiResponse.success(res, msg, dados, 201, true)` com
 - [ ] Comentário em cada passo e `//#region` em cada grupo de funções.
 - [ ] Rota com `verificaToken, rlsMiddleware` nessa ordem.
 - [ ] `node --check` no(s) arquivo(s) alterado(s) e o app carrega (`node --input-type=module -e "import('./src/modules/app.js')"` ou similar).
+- [ ] Checklist de RLS cumprido (policy, FORCE, GRANT mínimo, `req.db`, teste com o role do app).
+- [ ] `db/script.sql` bate com as migrations.
 - [ ] AGENTS.md atualizado se a estrutura ou o estado mudou.
 
 ## Ao terminar

@@ -1,6 +1,6 @@
 // Quem gasta mais (donut) e gastos por categoria (barras).
 import { Card, ProgressBar } from '@heroui/react';
-import { moeda, percentual } from '../../../utils/formatar';
+import { moedaTela as moeda, percentual } from '../../../utils/formatar';
 
 const CORES = ['#1db954', '#f59e0b', '#8b5cf6', '#ef4444'];
 

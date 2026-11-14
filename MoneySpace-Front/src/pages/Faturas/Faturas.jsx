@@ -2,6 +2,7 @@
 // Para criar um mês novo, o botão "Criar fatura" escolhe o mês.
 // PC: conferência fixa à esquerda e lançamentos à direita.
 // Celular: duas abas, "Resumo" (totais + conferência) e "Detalhes" (filtros + cards).
+import { usePrivacidade } from '../../context/PrivacidadeContext';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Chip, Spinner, Tabs, toast, useOverlayState } from '@heroui/react';
@@ -39,6 +40,7 @@ const CHAVE_CONFERENCIA = 'faturas:conferencia';
 const br = (iso) => iso.split('-').reverse().join('/');
 
 export default function Faturas() {
+  usePrivacidade(); // refaz o desenho quando o olhinho (ocultar valores) muda
   const isMobile = useIsMobile();
 
   const [cartoes, setCartoes] = useState(null);
@@ -265,10 +267,14 @@ export default function Faturas() {
       </div>
       <Tabs selectedKey={filtro} onSelectionChange={setFiltro}>
         <Tabs.ListContainer>
+          {/* Celular: abas mais justas e "Fechamento" (sem o "No") para as 4 caberem sem cortar. */}
           <Tabs.List aria-label="Filtrar por status">
-            <Tabs.Tab id="todos">Todos<Tabs.Indicator /></Tabs.Tab>
+            <Tabs.Tab id="todos" className={isMobile ? 'px-2 text-xs' : undefined}>Todos<Tabs.Indicator /></Tabs.Tab>
             {Object.keys(STATUS).map((chave) => (
-              <Tabs.Tab key={chave} id={chave}>{STATUS[chave].label}<Tabs.Indicator /></Tabs.Tab>
+              <Tabs.Tab key={chave} id={chave} className={isMobile ? 'px-2 text-xs' : undefined}>
+                {isMobile && chave === 'no_fechamento' ? 'Fechamento' : STATUS[chave].label}
+                <Tabs.Indicator />
+              </Tabs.Tab>
             ))}
           </Tabs.List>
         </Tabs.ListContainer>

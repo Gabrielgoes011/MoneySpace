@@ -1,4 +1,4 @@
-﻿// ========================================
+// ========================================
 // 🎯 APP PRINCIPAL
 // ========================================
 // Estrutura mínima: contextos globais + rotas (login público e a tela de
@@ -10,6 +10,7 @@ import { Toast } from '@heroui/react';
 // Provedores de contexto
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { PrivacidadeProvider } from './context/PrivacidadeContext';
 
 // Páginas
 import Login from './pages/Login/Login';
@@ -20,6 +21,7 @@ import Relatorios from './pages/Relatorios/Relatorios';
 import EmBreve from './pages/EmBreve/EmBreve';
 import Usuarios from './pages/Usuarios/Usuarios';
 import Cartoes from './pages/Cartoes/Cartoes';
+import Familias from './pages/Familias/Familias';
 import Cadastros from './pages/Cadastros/Cadastros';
 import Categorias from './pages/Categorias/Categorias';
 import Dashboard from './pages/Dashboard/Dashboard';
@@ -27,11 +29,13 @@ function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
+        <PrivacidadeProvider>
         <BrowserRouter>
           {/* Toast do HeroUI: toast.success('...'), toast.danger('...') */}
           <Toast.Provider />
           <AppRoutes />
         </BrowserRouter>
+        </PrivacidadeProvider>
       </ThemeProvider>
     </AuthProvider>
   );
@@ -72,6 +76,7 @@ function AppRoutes() {
           <Route path="/cadastros" element={<Cadastros />} />
           <Route path="/cadastros/usuarios" element={<Usuarios />} />
           <Route path="/cadastros/cartoes" element={<Cartoes />} />
+          <Route path="/cadastros/familias" element={<Familias />} />
           <Route path="/cadastros/contas" element={<EmBreve titulo="Contas" />} />
           <Route path="/cadastros/categorias" element={<Categorias />} />
           <Route path="/perfil" element={<Conta />} />

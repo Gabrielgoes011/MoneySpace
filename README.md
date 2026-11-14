@@ -143,7 +143,7 @@ O schema completo e comentado está em [`MoneySpace-Back/db/script.sql`](MoneySp
 | Tabela | Papel |
 | --- | --- |
 | `familia` | O tenant. |
-| `usuario` | Quem acessa o app. Tem `role` (`ADMIN` ou `MEMBRO`), `is_master` (dono do app), senha em bcrypt e os campos do 2FA. |
+| `usuario` | Quem acessa o app. Tem `role` (`Admin` ou `Membro`), `is_master` (dono do app), senha em bcrypt e os campos do 2FA. |
 | `utilitario` | Lista global de opções (`tipo`, `valor`, `ordem`) que alimenta selects, como os status e as categorias. Não tem `id_familia` nem RLS. |
 | `fatura_corpo` | A fatura de uma competência, com o saldo de reserva. |
 | `fatura_transacao` | Cada lançamento da fatura, com portador, categoria, parcela e status. |
@@ -231,7 +231,7 @@ npm run build          # gera o dist, que o backend serve
 **Funcionando:**
 
 - Login, 2FA (TOTP) e logout.
-- Cadastro de usuários da família: listar, criar e editar. Só `ADMIN` ou o dono do app (`is_master`) cria e edita.
+- Cadastro de usuários da família: listar, criar e editar. Só `Admin` ou o dono do app (`is_master`) cria e edita.
 - Cadastro de categorias: listar e criar. Só o dono do app cria, porque a tabela é global.
 - Layout com topbar, lateral recolhível e barra inferior no celular, tema claro e escuro, PWA instalável.
 

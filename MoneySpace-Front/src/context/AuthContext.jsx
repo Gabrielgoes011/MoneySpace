@@ -6,6 +6,8 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
+import { verificarAcessoMaster } from '../services/familiaService';
+import { limparFamiliaAtiva } from '../services/familiaAtiva';
 
 // Cria o contexto
 const AuthContext = createContext();
@@ -38,6 +40,23 @@ export function AuthProvider({ children }) {
 
   // True enquanto carrega dados do usuário
   const [loading, setLoading] = useState(true);
+  // Dono do app (master)? null = ainda não sabemos, true/false = resposta do banco.
+  const [ehMaster, setEhMaster] = useState(null);
+
+  // Sempre que há token, pergunta ao back se o usuário é o dono do app (o banco decide, não o token).
+  // Quem deixou de ser master perde a "família ativa" guardada.
+  useEffect(() => {
+    if (!token) {
+      setEhMaster(null);
+      return;
+    }
+    verificarAcessoMaster()
+      .then((master) => {
+        setEhMaster(master);
+        if (!master) limparFamiliaAtiva();
+      })
+      .catch(() => setEhMaster(false));
+  }, [token]);
 
   // Ao carregar a página: se houver token salvo, revalida em /me para atualizar
   // os dados do usuário (nome, família, etc.) e confirmar que o token continua
@@ -100,6 +119,7 @@ export function AuthProvider({ children }) {
       setToken(null);
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      limparFamiliaAtiva();
     }
   };
 
@@ -109,6 +129,7 @@ export function AuthProvider({ children }) {
     setUser, // a tela "Minha conta" atualiza nome/e-mail/2FA sem recarregar
     token,
     loading,
+    ehMaster, // null = verificando, true = dono do app, false = membro comum
     login,
     logout,
     // Atalho para saber se está autenticado

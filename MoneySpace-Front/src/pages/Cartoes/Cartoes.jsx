@@ -1,4 +1,5 @@
-// Cadastro de cartões: lista da família. Só ADMIN vê os botões de cadastrar e excluir (vem do back).
+// Cadastro de cartões: lista da família. Só Admin vê os botões de cadastrar e excluir (vem do back).
+import { usePrivacidade } from '../../context/PrivacidadeContext';
 import { useEffect, useState } from 'react';
 import { Button, Chip, Spinner, useOverlayState } from '@heroui/react';
 import { FiPlus, FiCreditCard } from 'react-icons/fi';
@@ -9,6 +10,7 @@ import CartaoFormModal from './componentes/CartaoFormModal';
 import ExcluirCartaoModal from './componentes/ExcluirCartaoModal';
 
 export default function Cartoes() {
+  usePrivacidade(); // refaz o desenho quando o olhinho (ocultar valores) muda
   const [dados, setDados] = useState(null); // { cartoes, pode_cadastrar }
   const [usuarios, setUsuarios] = useState([]); // membros da família (para escolher o dono)
   const [cartaoParaExcluir, setCartaoParaExcluir] = useState(null);

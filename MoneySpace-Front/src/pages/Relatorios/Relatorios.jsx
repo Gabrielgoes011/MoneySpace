@@ -1,5 +1,6 @@
 // Relatórios: escolhe o cartão e a fatura e vê o relatório geral, o gasto por semana ou o que falta pagar.
 // Compartilha o PDF (WhatsApp) ou baixa. Tudo sai do próprio aparelho.
+import { usePrivacidade } from '../../context/PrivacidadeContext';
 import { useEffect, useState } from 'react';
 import { Button, Card, Chip, Spinner, Tabs, toast } from '@heroui/react';
 import { FiShare2, FiDownload, FiCopy, FiFileText } from 'react-icons/fi';
@@ -22,7 +23,7 @@ import {
   descreverParteRateio,
   compartilharRelatorioPdf
 } from '../../utils/relatorioFatura';
-import { moeda } from '../../utils/formatar';
+import { moedaTela as moeda } from '../../utils/formatar';
 
 // Bloco de um número do resumo (totais e reserva)
 function Indicador({ rotulo, valor, destaque = false }) {
@@ -54,6 +55,7 @@ function AcoesRelatorio({ onCompartilhar, onBaixar, onCopiar }) {
 }
 
 export default function Relatorios() {
+  usePrivacidade(); // refaz o desenho quando o olhinho (ocultar valores) muda
   const [cartoes, setCartoes] = useState(null);
   const [cartaoId, setCartaoId] = useState('');
   const [faturas, setFaturas] = useState([]);
@@ -237,7 +239,7 @@ export default function Relatorios() {
             <Indicador rotulo="Pendente" valor={moeda(relatorio.resumo.totalPendente)} />
             <Indicador rotulo="No fechamento" valor={moeda(relatorio.resumo.totalNoFechamento)} />
             {relatorio.resumo.recebidoRateio > 0 && (
-              <Indicador rotulo="Já recebido do rateio (abate a reserva)" valor={moeda(relatorio.resumo.recebidoRateio)} />
+              <Indicador rotulo="Já recebido da divisão (abate a reserva)" valor={moeda(relatorio.resumo.recebidoRateio)} />
             )}
             <Indicador rotulo="Saldo da reserva" valor={moeda(relatorio.resumo.saldoReserva)} />
             <Indicador
@@ -312,7 +314,7 @@ export default function Relatorios() {
           <div className="grid grid-cols-2 gap-3">
             <Indicador rotulo="Total pendente" valor={moeda(relatorioPendencias.totalPendente)} destaque />
             {relatorioPendencias.aReceber > 0 && (
-              <Indicador rotulo="Falta receber do rateio" valor={moeda(relatorioPendencias.aReceber)} />
+              <Indicador rotulo="Falta receber da divisão" valor={moeda(relatorioPendencias.aReceber)} />
             )}
             <Indicador rotulo="Lançamentos pendentes" valor={String(relatorioPendencias.quantidadePendente)} />
           </div>

@@ -142,9 +142,9 @@ function Formulario({ state, idFatura, lancamento, usuarios, categorias, onSalvo
             <Switch.Thumb />
           </Switch.Control>
           <Switch.Content>
-            <Label>Racha esta compra entre pessoas</Label>
+            <Label>Dividir esta compra entre pessoas</Label>
             <span className="text-xs text-muted">
-              A linha fica destacada. Depois de salvar, use o botão Rateio da linha para dividir e acompanhar os pagamentos.
+              A linha fica destacada. Depois de salvar, use o botão Divisão da linha para dividir e acompanhar os pagamentos.
             </span>
           </Switch.Content>
         </Switch>

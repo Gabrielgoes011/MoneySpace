@@ -2,6 +2,11 @@
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export const moeda = (v) => brl.format(Number(v) || 0);
+
+// Valores em R$ das TELAS: com o olhinho fechado viram 'R$ ••••'. PDF e texto copiado usam a moeda real.
+let valoresOcultos = false;
+export const definirOcultarValores = (ocultar) => { valoresOcultos = ocultar; };
+export const moedaTela = (v) => (valoresOcultos ? 'R$ ••••' : moeda(v));
 export const percentual = (v) => `${(Number(v) || 0).toFixed(1).replace('.', ',')}%`;
 
 // '2026-10-08' -> '08/10'

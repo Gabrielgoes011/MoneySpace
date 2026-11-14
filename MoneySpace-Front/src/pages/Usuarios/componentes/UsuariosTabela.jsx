@@ -2,7 +2,7 @@
 // No celular vira lista de cards.
 import { Table, Card, Chip, Avatar, Button } from '@heroui/react';
 import { FiEdit2, FiShield } from 'react-icons/fi';
-import { cpfMascara, iniciais } from '../../../utils/formatar';
+import { iniciais } from '../../../utils/formatar';
 import useIsMobile from '../../../hooks/useIsMobile';
 
 // Cor do avatar estável por nome (gradiente, como no exemplo do HeroUI).
@@ -28,7 +28,7 @@ function MembroCell({ u }) {
 
 function PerfilChip({ u }) {
   if (u.is_master) return <Chip size="sm" variant="soft" color="accent"><FiShield size={12} /> Dono</Chip>;
-  return u.role === 'ADMIN'
+  return u.role === 'Admin'
     ? <Chip size="sm" variant="soft" color="success">Administrador</Chip>
     : <Chip size="sm" variant="soft">Membro</Chip>;
 }
@@ -59,7 +59,7 @@ export default function UsuariosTabela({ usuarios, podeEditar, onEditar }) {
                 <PerfilChip u={u} />
                 {u.mfa_ativo && <Chip size="sm" variant="soft">2FA</Chip>}
               </div>
-              <p className="text-xs text-muted">CPF {cpfMascara(u.cpf)}</p>
+              <p className="text-xs text-muted">CPF {u.cpf_mascarado ?? '—'}</p>
             </Card.Content>
           </Card>
         ))}
@@ -82,7 +82,7 @@ export default function UsuariosTabela({ usuarios, podeEditar, onEditar }) {
             {usuarios.map((u) => (
               <Table.Row key={u.id} id={u.id}>
                 <Table.Cell><MembroCell u={u} /></Table.Cell>
-                <Table.Cell className="tabular-nums">{cpfMascara(u.cpf)}</Table.Cell>
+                <Table.Cell className="tabular-nums">{u.cpf_mascarado ?? '—'}</Table.Cell>
                 <Table.Cell><PerfilChip u={u} /></Table.Cell>
                 <Table.Cell>{u.mfa_ativo ? <Chip size="sm" variant="soft" color="success">Ligado</Chip> : <span className="text-muted">—</span>}</Table.Cell>
                 <Table.Cell><Acoes u={u} podeEditar={podeEditar} onEditar={onEditar} /></Table.Cell>

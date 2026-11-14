@@ -1,12 +1,12 @@
 import { Card, Chip } from '@heroui/react';
-import { moeda } from '../../../utils/formatar';
+import { moedaTela as moeda } from '../../../utils/formatar';
 
 export default function ResumoCards({ c }) {
   const coberta = c.diferenca >= 0;
   const itens = [
     { t: 'Total da fatura', v: c.bruto, d: 'Gastos do mês no cartão' },
     { t: 'Na hora', v: c.pago, d: 'Já debitado da conta' },
-    { t: 'Pendente', v: c.pendente, d: c.recebido > 0 ? `Já recebido do rateio: ${moeda(c.recebido)}` : 'Aguardando transferir' },
+    { t: 'Pendente', v: c.pendente, d: c.recebido > 0 ? `Já recebido da divisão: ${moeda(c.recebido)}` : 'Aguardando transferir' },
     { t: 'No fechamento', v: c.fechamento, d: 'Parcelas e fixas' },
     { t: 'Meta na reserva', v: c.meta, d: 'Deveria estar guardado' },
   ];

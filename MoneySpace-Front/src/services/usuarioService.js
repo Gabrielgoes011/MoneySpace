@@ -16,16 +16,22 @@ const comMensagem = (erro) => {
 let demo = {
   familia: { id: 'f1', nome: 'Família Goes' },
   usuarios: [
-    { id: 'u1', nome: 'Gabriel Goes', email: 'gabriel@exemplo.com', cpf: '52998224725', role: 'ADMIN', is_master: true, mfa_ativo: true, dt_cadastro: '2026-01-10T09:00:00' },
-    { id: 'u2', nome: 'Geovana Tavares', email: 'geovana@exemplo.com', cpf: '11144477735', role: 'ADMIN', is_master: false, mfa_ativo: false, dt_cadastro: '2026-01-10T09:05:00' },
-    { id: 'u3', nome: 'Marcos Tavares', email: 'marcos@exemplo.com', cpf: '39053344705', role: 'MEMBRO', is_master: false, mfa_ativo: false, dt_cadastro: '2026-03-02T15:00:00' },
-    { id: 'u4', nome: 'Sara Johnson', email: 'sara@exemplo.com', cpf: '86288366757', role: 'MEMBRO', is_master: false, mfa_ativo: false, dt_cadastro: '2026-02-20T11:00:00' },
+    { id: 'u1', nome: 'Gabriel Goes', email: 'gabriel@exemplo.com', cpf: '52998224725', role: 'Admin', is_master: true, mfa_ativo: true, dt_cadastro: '2026-01-10T09:00:00' },
+    { id: 'u2', nome: 'Geovana Tavares', email: 'geovana@exemplo.com', cpf: '11144477735', role: 'Admin', is_master: false, mfa_ativo: false, dt_cadastro: '2026-01-10T09:05:00' },
+    { id: 'u3', nome: 'Marcos Tavares', email: 'marcos@exemplo.com', cpf: '39053344705', role: 'Membro', is_master: false, mfa_ativo: false, dt_cadastro: '2026-03-02T15:00:00' },
+    { id: 'u4', nome: 'Sara Johnson', email: 'sara@exemplo.com', cpf: '86288366757', role: 'Membro', is_master: false, mfa_ativo: false, dt_cadastro: '2026-02-20T11:00:00' },
   ],
 };
 const atraso = (v) => new Promise((r) => setTimeout(() => r(v), 250));
 
 export async function listarUsuarios() {
-  if (DEMO) return atraso({ ...demo, pode_editar: true });
+  if (DEMO) {
+    const mascarar = (u) => {
+      const { cpf, ...resto } = u;
+      return { ...resto, cpf_mascarado: `***.${cpf.slice(3, 6)}.${cpf.slice(6, 9)}-**` };
+    };
+    return atraso({ ...demo, usuarios: demo.usuarios.map(mascarar), pode_editar: true });
+  }
   return api.get('/usuarios').then((r) => r.data.data).catch(comMensagem);
 }
 

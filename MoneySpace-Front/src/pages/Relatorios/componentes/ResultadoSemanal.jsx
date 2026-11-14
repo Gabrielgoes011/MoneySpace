@@ -3,7 +3,7 @@
 // Parcelas de faturas passadas (2 de N em diante) ficam num bloco próprio, fora das semanas.
 import { Card, Button, Tabs } from '@heroui/react';
 import { FiShare2, FiDownload, FiCopy } from 'react-icons/fi';
-import { moeda } from '../../../utils/formatar';
+import { moedaTela as moeda } from '../../../utils/formatar';
 
 export default function ResultadoSemanal({ relatorio, formato, onFormato, onCompartilhar, onBaixar, onCopiar }) {
   const resumido = formato === 'resumido';

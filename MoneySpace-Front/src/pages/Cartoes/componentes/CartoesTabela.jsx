@@ -2,7 +2,7 @@
 // O botão de excluir só aparece quando `podeExcluir` (admin, vem do back).
 import { Table, Card, Chip, Avatar, Button } from '@heroui/react';
 import { FiCreditCard, FiStar, FiTrash2 } from 'react-icons/fi';
-import { iniciais, moeda } from '../../../utils/formatar';
+import { iniciais, moedaTela as moeda } from '../../../utils/formatar';
 import useIsMobile from '../../../hooks/useIsMobile';
 
 // Ícone + apelido + final do cartão (custom cell do nome)

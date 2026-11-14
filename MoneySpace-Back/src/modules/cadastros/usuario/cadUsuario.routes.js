@@ -23,11 +23,11 @@ router.get('/usuarios', verificaToken, rlsMiddleware, listarUsuarios);
 //resposta: { familia, usuarios, pode_editar }
 
 router.post('/usuarios', verificaToken, rlsMiddleware, criarUsuario);
-//body: { nome, cpf, email, senha, role } (só ADMIN)
+//body: { nome, cpf, email, senha, role } (só Admin)
 
 router.post('/usuarios/editar/:id', verificaToken, rlsMiddleware, atualizarUsuario);
 //params: id do usuário a ser editado
-//body: { nome?, cpf?, email?, role?, senha? } (só ADMIN)
+//body: { nome?, cpf?, email?, role?, senha? } (só Admin)
 
 // Dados da conta do próprio usuário logado
 router.get('/usuarios/minha-conta', verificaToken, rlsMiddleware, buscarMinhaConta);

@@ -1,5 +1,5 @@
 // Minha conta: dados pessoais, troca de senha e autenticação em dois fatores (2FA).
-// Tudo de quem está logado. Perfil de acesso (ADMIN/MEMBRO) não muda aqui.
+// Tudo de quem está logado. Perfil de acesso (Admin/Membro) não muda aqui.
 import { useEffect, useState } from 'react';
 import { Button, Card, Spinner, useOverlayState } from '@heroui/react';
 import { FiKey } from 'react-icons/fi';

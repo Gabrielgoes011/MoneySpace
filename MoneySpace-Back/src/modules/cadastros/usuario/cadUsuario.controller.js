@@ -7,7 +7,7 @@
 //
 // Autorização (o JWT ainda não carrega `role`): o papel de quem chama é lido do banco.
 //   - listar:           qualquer membro da família
-//   - criar / editar:   só ADMIN (ou master)
+//   - criar / editar:   só Admin (ou master)
 //   - editar um master: só outro master
 //
 // Regras de negócio ficam DENTRO de cada função (sem helper). Helper `_` só para
@@ -17,7 +17,7 @@
 import bcrypt from 'bcrypt';
 import httpResponse from '../../../utils/httpResponse.js';
 import pgErrorHandler, { CODIGO_UNIQUE_VIOLATION } from '../../../utils/pgErrorHandler.js';
-import { validarCpf } from '../../../utils/cpf.js';
+import { validarCpf, mascararCpf } from '../../../utils/cpf.js';
 import {
   buscarFamiliaAtualRepository,
   listarUsuariosRepository,
@@ -30,11 +30,20 @@ import {
 } from './cadUsuario.Repositories.js';
 
 //#region => Constantes
-const PERFIS_VALIDOS = ['ADMIN', 'MEMBRO'];
+const PERFIS_VALIDOS = ['Admin', 'Membro'];
 const SENHA_TAMANHO_MINIMO = 6;
 const SENHA_TAMANHO_MINIMO_TROCA = 8; // troca feita pelo próprio usuário exige mais
 const SALT_ROUNDS_BCRYPT = 10;
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//#endregion
+
+//#region => Helpers internos
+//troca o CPF inteiro pelo CPF mascarado (***.456.789-**) antes de ir para o front
+//só transformação técnica: o CPF inteiro só sai em 'minha conta' (o próprio dono vendo o seu)
+function _ocultarCpf(usuario) {
+  const { cpf, ...usuarioSemCpf } = usuario;
+  return { ...usuarioSemCpf, cpf_mascarado: mascararCpf(cpf) };
+}
 //#endregion
 
 //#region => listar usuários da família
@@ -48,13 +57,13 @@ async function listarUsuarios(req, res) {
       buscarPapelRepository(req.db, req.user.id)
     ]);
 
-    //2º passo: diz se quem chamou pode editar (ADMIN da família ou dono do app)
-    const podeEditar = papelSolicitante?.role === 'ADMIN' || papelSolicitante?.is_master === true;
+    //2º passo: diz se quem chamou pode editar (Admin da família ou dono do app)
+    const podeEditar = papelSolicitante?.role === 'Admin' || papelSolicitante?.is_master === true;
 
     //retorna os resultados da consulta em formato JSON
     return httpResponse.success(res, 'Usuários listados com sucesso!', {
       familia,
-      usuarios,
+      usuarios: usuarios.map(_ocultarCpf),
       pode_editar: podeEditar
     });
 
@@ -72,7 +81,7 @@ async function criarUsuario(req, res) {
   try {
     //1º passo: só administrador cadastra
     const papelSolicitante = await buscarPapelRepository(req.db, req.user.id);
-    const solicitanteEhAdmin = papelSolicitante?.role === 'ADMIN' || papelSolicitante?.is_master === true;
+    const solicitanteEhAdmin = papelSolicitante?.role === 'Admin' || papelSolicitante?.is_master === true;
 
     if (!solicitanteEhAdmin) {
       return httpResponse.forbidden(res, 'Apenas administradores podem cadastrar usuários.');
@@ -104,7 +113,7 @@ async function criarUsuario(req, res) {
       return httpResponse.validationError(res, 'Informe um CPF válido.');
     }
     if (!PERFIS_VALIDOS.includes(dados.role)) {
-      return httpResponse.validationError(res, 'O perfil deve ser ADMIN ou MEMBRO.');
+      return httpResponse.validationError(res, 'O perfil deve ser Admin ou Membro.');
     }
     if (senhaInformada.length < SENHA_TAMANHO_MINIMO) {
       return httpResponse.validationError(res, `A senha deve ter no mínimo ${SENHA_TAMANHO_MINIMO} caracteres.`);
@@ -123,7 +132,7 @@ async function criarUsuario(req, res) {
     });
 
     //retorna o usuário criado
-    return httpResponse.success(res, 'Usuário cadastrado com sucesso!', { usuario: usuarioCriado }, 201);
+    return httpResponse.success(res, 'Usuário cadastrado com sucesso!', { usuario: _ocultarCpf(usuarioCriado) }, 201);
 
   } catch (error) {
     console.error('Erro ao cadastrar usuário na etapa do controller:', error);
@@ -145,7 +154,7 @@ async function atualizarUsuario(req, res) {
   try {
     //1º passo: só administrador edita
     const usuarioSolicitante = await buscarPapelRepository(req.db, req.user.id);
-    const solicitanteEhAdmin = usuarioSolicitante?.role === 'ADMIN' || usuarioSolicitante?.is_master === true;
+    const solicitanteEhAdmin = usuarioSolicitante?.role === 'Admin' || usuarioSolicitante?.is_master === true;
 
     if (!solicitanteEhAdmin) {
       return httpResponse.forbidden(res, 'Apenas administradores podem editar usuários.');
@@ -199,7 +208,7 @@ async function atualizarUsuario(req, res) {
       return httpResponse.validationError(res, 'Informe um CPF válido.');
     }
     if (roleInformado && !PERFIS_VALIDOS.includes(dados.role)) {
-      return httpResponse.validationError(res, 'O perfil deve ser ADMIN ou MEMBRO.');
+      return httpResponse.validationError(res, 'O perfil deve ser Admin ou Membro.');
     }
     if (senhaInformada && String(dados.senha).length < SENHA_TAMANHO_MINIMO) {
       return httpResponse.validationError(res, `A senha deve ter no mínimo ${SENHA_TAMANHO_MINIMO} caracteres.`);
@@ -209,7 +218,7 @@ async function atualizarUsuario(req, res) {
     const estaSeRebaixando =
       usuarioAlvo.id === req.user.id &&
       roleInformado &&
-      dados.role !== 'ADMIN' &&
+      dados.role !== 'Admin' &&
       !alvoEhDono;
 
     if (estaSeRebaixando) {
@@ -231,7 +240,7 @@ async function atualizarUsuario(req, res) {
     });
 
     //retorna o usuário atualizado
-    return httpResponse.success(res, 'Usuário atualizado com sucesso!', { usuario: usuarioAtualizado });
+    return httpResponse.success(res, 'Usuário atualizado com sucesso!', { usuario: _ocultarCpf(usuarioAtualizado) });
 
   } catch (error) {
     console.error('Erro ao atualizar usuário na etapa do controller:', error);

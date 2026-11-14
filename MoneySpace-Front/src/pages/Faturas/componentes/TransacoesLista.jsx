@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { Table, Card, Chip, Select, ListBox, Pagination, Button, SearchField, Popover, Input } from '@heroui/react';
 import { FiEdit2, FiTrash2, FiChevronDown, FiArrowUp, FiArrowDown, FiFilter, FiX, FiUsers } from 'react-icons/fi';
 import { STATUS } from '../../../utils/statusFatura';
-import { moeda, dataCurta, properCase } from '../../../utils/formatar';
+import { moeda, moedaTela, dataCurta, properCase } from '../../../utils/formatar';
 import useIsMobile from '../../../hooks/useIsMobile';
 import Seletor from '../../../components/Seletor';
 
@@ -139,7 +139,7 @@ const VALOR_ORDENACAO = {
 };
 
 // Status editável na linha, com a cor do status (ponto + texto).
-function StatusSelect({ tr, onChange, desabilitado }) {
+function StatusSelect({ tr, onChange, desabilitado, className = 'w-36' }) {
   const estilo = STATUS[tr.status] ?? STATUS.pendente;
   return (
     <Select
@@ -147,7 +147,7 @@ function StatusSelect({ tr, onChange, desabilitado }) {
       selectedKey={tr.status}
       isDisabled={desabilitado}
       onSelectionChange={(k) => onChange(tr.id, k)}
-      className="w-36"
+      className={className}
     >
       <Select.Trigger>
         <span className="flex items-center gap-2">
@@ -174,7 +174,7 @@ function StatusSelect({ tr, onChange, desabilitado }) {
 }
 
 // Categoria editável na linha: lista as categorias do cadastro.
-function CategoriaSelect({ tr, categorias, onChange, desabilitado }) {
+function CategoriaSelect({ tr, categorias, onChange, desabilitado, className = 'w-40' }) {
   const itens = [
     { id: SEM_CATEGORIA, nome: 'Sem categoria' },
     ...categorias.map((c) => ({ id: c.valor, nome: properCase(c.valor) })),
@@ -185,7 +185,7 @@ function CategoriaSelect({ tr, categorias, onChange, desabilitado }) {
       selectedKey={tr.categoria ?? SEM_CATEGORIA}
       isDisabled={desabilitado}
       onSelectionChange={(k) => onChange(tr.id, k === SEM_CATEGORIA ? '' : k)}
-      className="w-40"
+      className={className}
     >
       <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
       <Select.Popover>
@@ -200,31 +200,41 @@ function CategoriaSelect({ tr, categorias, onChange, desabilitado }) {
 }
 
 // Marca da compra rateada: abre a tela do rateio (funciona também com a fatura fechada).
-function MarcaRateio({ tr, onRateio }) {
+// `grande` (celular): botão de verdade, com fundo e texto "Divisão", fácil de achar e de tocar.
+function MarcaRateio({ tr, onRateio, grande = false }) {
+  if (grande) {
+    return (
+      <Button size="sm" variant="secondary" aria-label={`Gerenciar a divisão de ${tr.estabelecimento}`}
+        className="shrink-0 gap-1.5 font-medium text-accent" onPress={() => onRateio(tr)}>
+        <FiUsers size={14} /> Divisão
+      </Button>
+    );
+  }
   return (
-    <Button size="sm" variant="ghost" aria-label={`Rateio de ${tr.estabelecimento}`}
+    <Button size="sm" variant="ghost" aria-label={`Divisão de ${tr.estabelecimento}`}
       className="h-6 min-w-0 shrink-0 gap-1 px-2 text-xs font-medium text-accent" onPress={() => onRateio(tr)}>
-      <FiUsers size={12} /> Rateio
+      <FiUsers size={12} /> Divisão
     </Button>
   );
 }
 
 // Ações do lançamento: rateio (só nas compras rateadas), editar e excluir (editar e excluir
 // ficam travados com a fatura fechada; o rateio continua disponível).
-function AcoesLancamento({ tr, desabilitado, onEditar, onExcluir, onRateio }) {
+// No celular o rateio já tem o botão "Rateio" no card (`semRateio`) e os botões ficam maiores para o toque.
+function AcoesLancamento({ tr, desabilitado, onEditar, onExcluir, onRateio, semRateio = false, tamanho = 'sm' }) {
   return (
     <div className="flex items-center gap-1">
-      {tr.rateado && (
-        <Button isIconOnly size="sm" variant="ghost" aria-label={`Administrar o rateio de ${tr.estabelecimento}`}
+      {tr.rateado && !semRateio && (
+        <Button isIconOnly size={tamanho} variant="ghost" aria-label={`Administrar a divisão de ${tr.estabelecimento}`}
           onPress={() => onRateio(tr)}>
           <FiUsers size={16} />
         </Button>
       )}
-      <Button isIconOnly size="sm" variant="ghost" aria-label={`Editar ${tr.estabelecimento}`}
+      <Button isIconOnly size={tamanho} variant="ghost" aria-label={`Editar ${tr.estabelecimento}`}
         isDisabled={desabilitado} onPress={() => onEditar(tr)}>
         <FiEdit2 size={16} />
       </Button>
-      <Button isIconOnly size="sm" variant="ghost" aria-label={`Excluir ${tr.estabelecimento}`}
+      <Button isIconOnly size={tamanho} variant="ghost" aria-label={`Excluir ${tr.estabelecimento}`}
         isDisabled={desabilitado} onPress={() => onExcluir(tr)}>
         <FiTrash2 size={16} />
       </Button>
@@ -379,25 +389,33 @@ export default function TransacoesLista({ transacoes, categorias = [], onStatus,
         {barraFiltros}
         {itens.length === 0 ? vazio : itens.map((tr) => (
           <Card key={tr.id} className={tr.rateado ? 'border border-accent/40 bg-accent/5' : undefined}>
-            <Card.Content className="gap-2">
-              <div className="flex items-start justify-between gap-2">
+            <Card.Content className="gap-3">
+              {/* 1ª linha: nome (até 2 linhas) e valor. Sem botões aqui, para o nome ter espaço. */}
+              <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{tr.estabelecimento}</p>
-                  <p className="text-xs text-muted">{dataCurta(tr.data)} · {tr.portador.split(' ')[0]}</p>
+                  <p className="line-clamp-2 break-words text-sm font-medium">{tr.estabelecimento}</p>
+                  <p className="mt-0.5 text-xs text-muted">{dataCurta(tr.data)} · {tr.portador.split(' ')[0]}</p>
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="text-right">
-                    <p className="font-semibold tabular-nums">{moeda(tr.valor)}</p>
-                    {tr.recebido > 0 && <p className="text-xs text-accent tabular-nums">recebido {moeda(tr.recebido)}</p>}
-                  </div>
-                  <AcoesLancamento tr={tr} desabilitado={bloqueada} onEditar={onEditar} onExcluir={onExcluir} onRateio={onRateio} />
+                <div className="shrink-0 text-right">
+                  <p className="font-semibold tabular-nums">{moedaTela(tr.valor)}</p>
+                  {tr.recebido > 0 && <p className="text-xs text-accent tabular-nums">recebido {moedaTela(tr.recebido)}</p>}
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusSelect tr={tr} onChange={onStatus} desabilitado={bloqueada} />
-                <CategoriaSelect tr={tr} categorias={categorias} onChange={onCategoria} desabilitado={bloqueada} />
-                {tr.parcela && tr.parcela !== '-' && <Chip size="sm" variant="soft">{tr.parcela}</Chip>}
-                {tr.rateado && <MarcaRateio tr={tr} onRateio={onRateio} />}
+              {/* 2ª linha: status e categoria lado a lado, cada um com metade da largura. */}
+              <div className="grid grid-cols-2 gap-2">
+                <StatusSelect tr={tr} onChange={onStatus} desabilitado={bloqueada} className="w-full min-w-0" />
+                <CategoriaSelect tr={tr} categorias={categorias} onChange={onCategoria} desabilitado={bloqueada} className="w-full min-w-0" />
+              </div>
+              {/* 3ª linha: parcela e rateio à esquerda, editar e excluir à direita. */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  {tr.parcela && tr.parcela !== '-' && <Chip size="sm" variant="soft">{tr.parcela}</Chip>}
+                  {tr.rateado && <MarcaRateio tr={tr} onRateio={onRateio} grande />}
+                </div>
+                <div className="ml-auto">
+                  <AcoesLancamento tr={tr} desabilitado={bloqueada} onEditar={onEditar} onExcluir={onExcluir}
+                    onRateio={onRateio} semRateio tamanho="md" />
+                </div>
               </div>
             </Card.Content>
           </Card>
@@ -443,8 +461,8 @@ export default function TransacoesLista({ transacoes, categorias = [], onStatus,
                   </Table.Cell>
                   <Table.Cell className="whitespace-nowrap" title={tr.portador}>{tr.portador.split(' ')[0]}</Table.Cell>
                   <Table.Cell className="whitespace-nowrap tabular-nums">
-                    <div>{moeda(tr.valor)}</div>
-                    {tr.recebido > 0 && <div className="text-xs text-accent">recebido {moeda(tr.recebido)}</div>}
+                    <div>{moedaTela(tr.valor)}</div>
+                    {tr.recebido > 0 && <div className="text-xs text-accent">recebido {moedaTela(tr.recebido)}</div>}
                   </Table.Cell>
                   <Table.Cell>{tr.parcela ?? '—'}</Table.Cell>
                   <Table.Cell><CategoriaSelect tr={tr} categorias={categorias} onChange={onCategoria} desabilitado={bloqueada} /></Table.Cell>

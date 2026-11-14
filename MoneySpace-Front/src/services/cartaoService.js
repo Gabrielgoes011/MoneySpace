@@ -23,7 +23,7 @@ export async function listarCartoes() {
   return api.get('/cartoes').then((r) => r.data.data).catch(comMensagem);
 }
 
-// Exclui o cartão (só ADMIN e só sem lançamentos). O back responde 409 se tiver movimentação.
+// Exclui o cartão (só Admin e só sem lançamentos). O back responde 409 se tiver movimentação.
 export async function excluirCartao(idCartao) {
   if (DEMO) {
     demo = demo.filter((c) => c.id !== idCartao);
