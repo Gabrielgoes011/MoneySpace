@@ -141,7 +141,7 @@ async function buscarRateio(req, res) {
 
   } catch (error) {
     console.error('Erro ao buscar o rateio na etapa do controller:', error);
-    const secureMessage = pgErrorHandler(error, 'Erro ao buscar o rateio.');
+    const secureMessage = pgErrorHandler(error, 'Erro ao buscar a divisão.');
     return httpResponse.error(res, secureMessage);
   }
 }
@@ -204,9 +204,9 @@ async function cadastrarParte(req, res) {
 
     //a mesma pessoa duas vezes no mesmo lançamento -> 409
     if (error.code === CODIGO_UNIQUE_VIOLATION) {
-      return httpResponse.conflict(res, 'Esta pessoa já está no rateio desta compra.');
+      return httpResponse.conflict(res, 'Esta pessoa já está na divisão desta compra.');
     }
-    const secureMessage = pgErrorHandler(error, 'Erro ao incluir a parte do rateio.');
+    const secureMessage = pgErrorHandler(error, 'Erro ao incluir a parte da divisão.');
     return httpResponse.error(res, secureMessage);
   }
 }
@@ -246,7 +246,7 @@ async function editarParte(req, res) {
 
   } catch (error) {
     console.error('Erro ao editar a parte do rateio na etapa do controller:', error);
-    const secureMessage = pgErrorHandler(error, 'Erro ao editar a parte do rateio.');
+    const secureMessage = pgErrorHandler(error, 'Erro ao editar a parte da divisão.');
     return httpResponse.error(res, secureMessage);
   }
 }
@@ -280,7 +280,7 @@ async function excluirParte(req, res) {
 
   } catch (error) {
     console.error('Erro ao excluir a parte do rateio na etapa do controller:', error);
-    const secureMessage = pgErrorHandler(error, 'Erro ao remover a parte do rateio.');
+    const secureMessage = pgErrorHandler(error, 'Erro ao remover a parte da divisão.');
     return httpResponse.error(res, secureMessage);
   }
 }
@@ -412,7 +412,7 @@ async function definirAbsorcao(req, res) {
 
   } catch (error) {
     console.error('Erro ao definir a absorção da parte na etapa do controller:', error);
-    const secureMessage = pgErrorHandler(error, 'Erro ao atualizar a parte do rateio.');
+    const secureMessage = pgErrorHandler(error, 'Erro ao atualizar a parte da divisão.');
     return httpResponse.error(res, secureMessage);
   }
 }

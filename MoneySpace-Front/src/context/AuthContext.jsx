@@ -1,7 +1,9 @@
 // ========================================
 // 🔐 CONTEXTO DE AUTENTICAÇÃO
 // ========================================
-// Gerencia login/logout e guarda o token do usuário
+// A sessão mora no cookie httpOnly "token" (o JavaScript não consegue ler).
+// O front NÃO guarda token: guarda só o perfil do usuário (nome, e-mail),
+// para a tela abrir rápido, e confirma a sessão com o back em /me.
 // Disponível em toda a aplicação através do hook useAuth()
 
 import { createContext, useContext, useState, useEffect } from 'react';
@@ -19,7 +21,7 @@ const AuthContext = createContext();
  *     <App />
  *   </AuthProvider>
  */
-// Lê o usuário salvo no localStorage de forma segura (JSON pode estar corrompido).
+// Lê o perfil salvo no localStorage de forma segura (JSON pode estar corrompido).
 function lerUsuarioSalvo() {
   try {
     const bruto = localStorage.getItem('user');
@@ -31,22 +33,20 @@ function lerUsuarioSalvo() {
 }
 
 export function AuthProvider({ children }) {
-  // Estado do usuário logado — já inicia com o que estiver persistido,
-  // para a sessão sobreviver a um refresh mesmo antes do /me responder.
+  // Perfil do usuário logado. Começa com o que estiver salvo; o /me confirma.
   const [user, setUser] = useState(() => lerUsuarioSalvo());
 
-  // Token JWT salvo no localStorage
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
-
-  // True enquanto carrega dados do usuário
+  // True enquanto o /me não respondeu (evita piscar a tela de login).
   const [loading, setLoading] = useState(true);
   // Dono do app (master)? null = ainda não sabemos, true/false = resposta do banco.
   const [ehMaster, setEhMaster] = useState(null);
 
-  // Sempre que há token, pergunta ao back se o usuário é o dono do app (o banco decide, não o token).
+  const isAuthenticated = !!user;
+
+  // Sempre que há sessão, pergunta ao back se o usuário é o dono do app (o banco decide).
   // Quem deixou de ser master perde a "família ativa" guardada.
   useEffect(() => {
-    if (!token) {
+    if (!isAuthenticated) {
       setEhMaster(null);
       return;
     }
@@ -56,20 +56,12 @@ export function AuthProvider({ children }) {
         if (!master) limparFamiliaAtiva();
       })
       .catch(() => setEhMaster(false));
-  }, [token]);
+  }, [isAuthenticated]);
 
-  // Ao carregar a página: se houver token salvo, revalida em /me para atualizar
-  // os dados do usuário (nome, família, etc.) e confirmar que o token continua
-  // válido. A sessão persistida no localStorage já foi aplicada no estado acima.
+  // Ao abrir o app: limpa o token que versões antigas deixavam no localStorage e
+  // confirma a sessão em /me (o cookie decide). Sem cookie válido, a sessão cai.
   useEffect(() => {
-    const savedToken = localStorage.getItem('token');
-
-    if (!savedToken) {
-      setLoading(false);
-      return;
-    }
-
-    setToken(savedToken);
+    localStorage.removeItem('token');
 
     api
       .get('/me')
@@ -79,35 +71,27 @@ export function AuthProvider({ children }) {
         localStorage.setItem('user', JSON.stringify(usuario));
       })
       .catch((erro) => {
-        // Só encerra a sessão se o servidor rejeitou o token (401/403).
-        // Falhas de rede (backend fora do ar) mantêm a sessão local salva,
+        // Só encerra a sessão se o servidor rejeitou o cookie (401/403).
+        // Falhas de rede (backend fora do ar) mantêm o perfil salvo,
         // evitando deslogar o usuário por uma indisponibilidade temporária.
         const status = erro.response?.status;
         if (status === 401 || status === 403) {
-          localStorage.removeItem('token');
           localStorage.removeItem('user');
-          setToken(null);
           setUser(null);
         }
       })
       .finally(() => setLoading(false));
   }, []);
 
-  // Função para fazer login
-  const login = (userData, jwtToken) => {
-    // userData = { id, nome, email, ... }
-    // jwtToken = token recebido da API
-
+  // Depois do login, o back já gravou o cookie. Aqui só guardamos o perfil.
+  const login = (userData) => {
     setUser(userData);
-    setToken(jwtToken);
-    localStorage.setItem('token', jwtToken);
     localStorage.setItem('user', JSON.stringify(userData));
   };
 
   // Função para fazer logout.
-  // 1) Pede ao backend para limpar os cookies httpOnly (token + refreshToken) —
-  //    isso invalida a sessão do lado do servidor, não só no front.
-  // 2) Limpa o estado e o localStorage sempre, mesmo se a chamada falhar
+  // 1) Pede ao backend para limpar os cookies httpOnly (token + refreshToken).
+  // 2) Limpa o perfil local sempre, mesmo se a chamada falhar
   //    (ex.: backend fora do ar): o usuário NÃO pode ficar "preso" logado.
   const logout = async () => {
     try {
@@ -116,8 +100,6 @@ export function AuthProvider({ children }) {
       // Ignora falha de rede: o logout local acontece de qualquer forma abaixo.
     } finally {
       setUser(null);
-      setToken(null);
-      localStorage.removeItem('token');
       localStorage.removeItem('user');
       limparFamiliaAtiva();
     }
@@ -127,13 +109,12 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     setUser, // a tela "Minha conta" atualiza nome/e-mail/2FA sem recarregar
-    token,
     loading,
     ehMaster, // null = verificando, true = dono do app, false = membro comum
     login,
     logout,
-    // Atalho para saber se está autenticado
-    isAuthenticated: !!token,
+    // Atalho para saber se está autenticado (perfil presente)
+    isAuthenticated,
   };
 
   return (
@@ -147,7 +128,7 @@ export function AuthProvider({ children }) {
  * Hook para usar autenticação em qualquer componente
  *
  * Exemplo de uso:
- *   const { user, token, login, logout } = useAuth();
+ *   const { user, login, logout } = useAuth();
  */
 export function useAuth() {
   const context = useContext(AuthContext);

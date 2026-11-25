@@ -2,7 +2,7 @@
 // PÁGINA DE LOGIN
 // ========================================
 // Usa componentes do HeroUI v3: Card, InputGroup, Button, Separator e toast.
-// Chama a API e, se der certo, guarda o token com login() do AuthContext.
+// Chama a API e, se der certo, guarda o perfil com login() do AuthContext (o token vai só no cookie).
 
 import { useState } from 'react';
 import { Card, InputGroup, Button, toast } from '@heroui/react';
@@ -22,14 +22,14 @@ function Login() {
   const entrar = (credenciais) => {
     setCarregando(true);
 
-    // Promise do login: faz a chamada, guarda o token e devolve o usuário.
+    // Promise do login: faz a chamada (o cookie httpOnly já vem na resposta) e guarda o perfil.
     // O usuário retornado alimenta a mensagem de sucesso do toast.
     const promessaLogin = api
       .post('/login', credenciais)
       .then((resposta) => {
-        // O backend responde { success, message, data: { usuario, token } }
-        const { usuario, token } = resposta.data.data;
-        login(usuario, token);
+        // O backend responde { success, message, data: { usuario } }; o token fica só no cookie
+        const { usuario } = resposta.data.data;
+        login(usuario);
         return usuario;
       })
       .catch((erro) => {

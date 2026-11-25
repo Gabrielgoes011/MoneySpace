@@ -6,6 +6,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
@@ -41,6 +42,17 @@ app.set('trust proxy', 1);
 // ── CORS ──────────────────────────────────────────────────────────────────
 // Libera o front (Vite em http://localhost:5173) a chamar a API.
 // Em produção, troque pela(s) origem(ns) real(is) via CORS_ORIGIN no .env.
+// Cabeçalhos de segurança (CSP, HSTS, nosniff, etc.) com as opções padrão do helmet.
+// A CSP vale para o front servido pelo back (produção). Se algo for bloqueado, ver o console do navegador.
+// upgrade-insecure-requests (troca http por https) só em produção: em localhost (http) quebraria os recursos.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+    },
+  },
+}));
+
 const origins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((o) => o.trim());

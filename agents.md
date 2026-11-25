@@ -21,7 +21,14 @@ App financeiro familiar multi-tenant (1 `familia` = 1 tenant, RLS do PostgreSQL 
 
 ## STACK
 - Backend: Node.js ESM, Express 4, PostgreSQL (Neon) via `pg`, SQL nativo, sem ORM.
-- Auth: JWT (cookie httpOnly + corpo), bcrypt, 2FA TOTP (`speakeasy`, `qrcode`).
+- Auth: JWT no COOKIE httpOnly (`token`, 15 min), bcrypt, 2FA TOTP (`speakeasy`, `qrcode`). (2026-11-24) O front NÃO guarda
+  token: nem `localStorage` nem header `Authorization`. O `verificaToken` lê SÓ o cookie. O `localStorage` guarda só o perfil
+  (`user`, para abrir rápido); quem confirma a sessão é `GET /me` no carregamento. Respostas de login não trazem mais `token`.
+- SEGREDOS (2026-11-24, `src/config/segredos.js`): três variáveis, sem fallback entre elas. `JWT_SECRET` assina o token de ACESSO
+  (`type: 'access'`), `JWT_REFRESH_SECRET` assina o de REFRESH (`type: 'refresh'`), `CRYPTO_SECRET` cifra o `mfa_secreto`.
+  `verificaToken` só aceita `type: 'access'`. Sem um deles, ou com refresh = acesso, o servidor não sobe.
+  Em produção, `CRYPTO_SECRET` = valor atual do `JWT_SECRET` (senão quem tem 2FA não entra). Trocar `JWT_SECRET` desloga todo mundo.
+  Testado com `testa_segredos` (10 cenários) incluindo a migração do 2FA antigo.
 - Frontend: React 19 + Vite 8 + HeroUI v3 (`@heroui/react` 3.2.x) + Tailwind v4.
 - Env: back `.env.development`; front `.env.local` (`VITE_API_URL`). Deploy: Discloud (`DEPLOY_DISCLOUD.md`).
   O back serve `MoneySpace-Front/dist` (commitado de propósito): recompilar o front antes de subir.
@@ -187,6 +194,13 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
   item "Famílias" só para master (`filtrarItens` em `navegacao.js`), faixa amarela "Você está vendo a família X" com "Voltar para a minha".
   LIMITAÇÃO: dentro de outra família, "Minha conta" não funciona (a conta do master não pertence àquela família): voltar para a própria.
   O 2FA do master ainda NÃO é exigido (o do Gabriel está desligado). NÃO testado no navegador.
+- DEPENDÊNCIAS (2026-11-24): `pg` saiu de `optionalDependencies` e agora está em `dependencies` (sem ele o app não sobe; testado com
+  `npm ci --omit=optional`). Front: `npm audit fix` levou o Vite para 8.3.8 (2 vulnerabilidades altas corrigidas, 0 agora).
+  Back: 0 vulnerabilidades no `npm audit`.
+- CABEÇALHOS DE SEGURANÇA (2026-11-24): `helmet` (versão 8.3.0) em `src/modules/app.js`, com as opções padrão. CSP, HSTS,
+  nosniff, etc. `upgrade-insecure-requests` só em produção (em localhost quebraria os recursos). Verificado: os cabeçalhos
+  saem na API e no `/` (HTML do dist), e o HTML do dist não tem script inline nem link externo. NÃO testado no navegador:
+  se o console mostrar "Content Security Policy" bloqueando algo, o caminho é ajustar a diretiva, não remover o helmet.
 - Log de startup (2026-11-14): `server.js` imprime um bloco só (porta, ambiente, link da API em dev, estado do banco), SEM
   host, usuário ou detalhes do banco, porque o log vai para o painel da Discloud. `verificarConexaoBanco()` fica em `configDb.js`.
 - Layout: topbar (3 linhas: PC = clique recolhe/mostra a lateral, hover abre painel preto com busca,
@@ -343,7 +357,11 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
 - Módulo de usuários ainda NÃO testado ponta a ponta contra o banco (só carga dos módulos + validação de CPF).
 - `README.md`, `MoneySpace-Back/Readme.md`, `MoneySpace-Front/README.md`, `DEPLOY_DISCLOUD.md` não revisados.
 - JWT sem `role`/`is_master`; autorização por papel só no módulo de usuários (consulta ao banco).
-- Edição de família (`PUT /familias/:id`) e listagem de famílias não checam papel.
+- Edição de família (`PUT /familias/:id`) e listagem de famílias não checam papel. (Obsoleto desde 2026-11-14: `PUT` removido e
+  `GET /familias` exige master. Mantido só para lembrar de revisar.)
+- SESSÃO (2026-11-24, achado da revisão): o cookie `refreshToken` tem `path: '/auth/refresh'`, mas as rotas ficam em `/api/auth/refresh`,
+  então o navegador nunca envia o refresh. Além disso o front NÃO chama `/auth/refresh`: o access token expira em 15 min e o usuário
+  precisa entrar de novo. Corrigir o path (`/api/auth/refresh`) e chamar o refresh no 401 antes de mandar para o login.
 - `db/script.sql` tem `usuario.ativo`/`ultimo_acesso` e o índice `idx_fat_trans_categoria`, que NÃO existem no Neon (nenhuma
   migration os cria). Decidir: apagar do script ou criar a migration 007.
 - Neon SQL Editor/DBeaver dividem o texto em cada `;`, inclusive em comentário: NUNCA usar `;` dentro de comentário SQL.

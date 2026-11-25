@@ -1,28 +1,30 @@
 // ========================================
 // MIDDLEWARE: VERIFICA TOKEN JWT
 // ========================================
-// Lê o token do header Authorization (Bearer) ou do cookie "token",
-// valida com o JWT_SECRET e injeta os dados decodificados em req.user.
+// Lê o token SÓ do cookie httpOnly "token" (o front não guarda token: não existe header Bearer),
+// valida com o segredo de ACESSO e injeta os dados decodificados em req.user.
+// Só aceita token de acesso (type 'access'): um refresh token não abre rota nenhuma.
 // Use nas rotas que exigem usuário autenticado (ex.: GET /me).
 
 import jwt from 'jsonwebtoken';
 import httpResponse from '../../utils/httpResponse.js';
-
-const JWT_SECRET = process.env.JWT_SECRET;
+import { SEGREDO_ACESSO } from '../../config/segredos.js';
 
 const verificaToken = (req, res, next) => {
   try {
-    const authHeader = req.headers['authorization'];
-    const cookieToken = req.cookies?.token;
-    const token = authHeader?.startsWith('Bearer ')
-      ? authHeader.split(' ')[1]
-      : cookieToken;
+    const token = req.cookies?.token;
 
     if (!token) {
       return httpResponse.unauthorized(res, 'Token não fornecido.');
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, SEGREDO_ACESSO);
+
+    // token de refresh (ou sem tipo, de antes desta mudança) não vale como acesso
+    if (decoded.type !== 'access') {
+      return httpResponse.unauthorized(res, 'Token inválido ou expirado.');
+    }
+
     req.user = decoded; // disponibiliza os dados do usuário para o controller
     next();
   } catch (error) {

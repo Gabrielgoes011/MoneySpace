@@ -15,6 +15,7 @@ import QRCode from 'qrcode';
 import httpResponse from '../../utils/httpResponse.js';
 import pgErrorHandler from '../../utils/pgErrorHandler.js';
 import { encryptText, decryptText } from '../../utils/crypto.js';
+import { SEGREDO_ACESSO, SEGREDO_REFRESH } from '../../config/segredos.js';
 import { findUserByEmail, findUserById, updateUser2fa } from './login.repositories.js';
 
 const APP_NAME = process.env.APP_NAME || 'MoneySpace';
@@ -53,17 +54,18 @@ function gerarAccessToken(usuario) {
       familia_nome: usuario.familia_nome,
       nome: usuario.nome,
       email: usuario.email,
+      type: 'access',
     },
-    process.env.JWT_SECRET,
+    SEGREDO_ACESSO,
     { expiresIn: ACCESS_TOKEN_EXPIRES }
   );
 }
 
-// Gera o refresh token: JWT separado (type: 'refresh') carregando só o id.
+// Gera o refresh token: assinado com o segredo PRÓPRIO do refresh, carregando só o id.
 function gerarRefreshToken(usuarioId) {
   return jwt.sign(
     { id: usuarioId, type: 'refresh' },
-    process.env.JWT_SECRET,
+    SEGREDO_REFRESH,
     { expiresIn: REFRESH_TOKEN_EXPIRES }
   );
 }
@@ -159,9 +161,9 @@ async function loginController(req, res) {
     setAccessCookie(res, token);
     setRefreshCookie(res, refreshToken);
 
+    // o token vai só no cookie httpOnly (o JavaScript do front não consegue ler)
     return httpResponse.success(res, 'Login bem-sucedido!', {
       usuario: usuarioPublico,
-      token,
     }, 200);
   } catch (error) {
     console.error('Erro no login na etapa do controller:', error);
@@ -206,7 +208,6 @@ async function login2faController(req, res) {
 
     return httpResponse.success(res, 'Login 2FA bem-sucedido!', {
       usuario: montarUsuarioPublico(usuario),
-      token,
     }, 200);
   } catch (error) {
     console.error('Erro no login 2FA na etapa do controller:', error);
@@ -243,7 +244,7 @@ async function refreshController(req, res) {
     // Verifica assinatura e expiração.
     let payload;
     try {
-      payload = jwt.verify(refreshToken, process.env.JWT_SECRET);
+      payload = jwt.verify(refreshToken, SEGREDO_REFRESH);
     } catch {
       return httpResponse.error(res, 'Sessão expirada. Faça login novamente.', 401);
     }
@@ -264,7 +265,6 @@ async function refreshController(req, res) {
 
     return httpResponse.success(res, 'Sessão renovada.', {
       usuario: montarUsuarioPublico(usuario),
-      token,
     }, 200);
   } catch (error) {
     console.error('Erro ao renovar a sessão na etapa do controller:', error);

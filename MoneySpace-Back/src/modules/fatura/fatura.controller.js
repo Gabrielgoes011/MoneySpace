@@ -560,7 +560,7 @@ async function editarLancamento(req, res) {
       const rateioDoLancamento = await contarRateioLancamentoRepository(req.db, idLancamento);
 
       if (rateioDoLancamento.partes > 0) {
-        return httpResponse.conflict(res, 'Esta compra tem pessoas no rateio. Remova as partes antes de desligar o rateio.');
+        return httpResponse.conflict(res, 'Esta compra tem pessoas na divisão. Remova as partes antes de desligar a divisão.');
       }
     }
 
@@ -614,7 +614,7 @@ async function excluirLancamento(req, res) {
     const rateioDoLancamento = await contarRateioLancamentoRepository(req.db, idLancamento);
 
     if (rateioDoLancamento.pagamentos > 0) {
-      return httpResponse.conflict(res, 'Esta compra tem pagamentos de rateio registrados. Apague os pagamentos antes de excluir o lançamento.');
+      return httpResponse.conflict(res, 'Esta compra tem pagamentos da divisão registrados. Apague os pagamentos antes de excluir o lançamento.');
     }
 
     //4º passo: apaga o lançamento

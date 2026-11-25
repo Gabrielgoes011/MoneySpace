@@ -5,20 +5,16 @@
 // `mfa_secreto` do banco, em vez de texto puro. Assim, mesmo que alguém leia
 // a tabela, não consegue reconstruir o segredo sem a chave da aplicação.
 //
-// A chave vem de CRYPTO_SECRET (.env). Se não houver, cai no JWT_SECRET.
-// Em produção, defina um CRYPTO_SECRET próprio e forte.
+// A chave vem de CRYPTO_SECRET (config/segredos.js). Sem fallback para o JWT_SECRET.
 
 import crypto from 'crypto';
+import { SEGREDO_CRIPTO } from '../config/segredos.js';
 
 const ALGO = 'aes-256-gcm';
 
-// Deriva uma chave de 32 bytes a partir do segredo da aplicação.
+// Deriva uma chave de 32 bytes a partir do segredo da cifragem.
 function getKey() {
-  const secret = process.env.CRYPTO_SECRET || process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('CRYPTO_SECRET/JWT_SECRET ausente para criptografia do 2FA.');
-  }
-  return crypto.createHash('sha256').update(String(secret)).digest();
+  return crypto.createHash('sha256').update(String(SEGREDO_CRIPTO)).digest();
 }
 
 // Cifra um texto. Retorna "iv:tag:conteudo" em base64, pronto para persistir.

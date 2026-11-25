@@ -2,7 +2,7 @@
 // 📡 SERVIÇO DE API (AXIOS)
 // ========================================
 // Configuração central para TODAS as chamadas HTTP
-// Cuida de adicionar o token automaticamente a toda requisição
+// Envia os cookies de sessão (withCredentials) a toda requisição
 
 import axios from 'axios';
 import { lerFamiliaAtiva } from './familiaAtiva';
@@ -22,15 +22,9 @@ const api = axios.create({
 // ========================================
 // INTERCEPTOR DE REQUISIÇÃO
 // ========================================
-// Adiciona o token JWT a TODA requisição automaticamente
+// O token NÃO vai mais no header: ele está no cookie httpOnly, que o navegador envia sozinho
+// (withCredentials). Aqui só entra o contexto da família ativa (dono do app).
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-
-  if (token) {
-    // Adiciona token no header Authorization
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
   // Dono do app dentro de outra família: o back confere no banco se ele é master.
   // A pergunta "sou master?" não leva o header (senão um header velho daria 403).
   const familiaAtiva = lerFamiliaAtiva();
@@ -61,7 +55,6 @@ api.interceptors.response.use(
     if (status === 401 && !ehRotaDeLogin) {
       // Token expirou ou é inválido em uma rota protegida: encerra a sessão.
       console.error('Sessão expirada, redirecionando para login');
-      localStorage.removeItem('token');
 
       // Evita loop de reload se já estivermos na tela de login.
       if (window.location.pathname !== '/login') {
