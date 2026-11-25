@@ -194,6 +194,11 @@ Rotas do back: `/login`, `/login/2fa`, `/me`, `/auth/refresh`, `/logout`, `/2fa/
   item "Famílias" só para master (`filtrarItens` em `navegacao.js`), faixa amarela "Você está vendo a família X" com "Voltar para a minha".
   LIMITAÇÃO: dentro de outra família, "Minha conta" não funciona (a conta do master não pertence àquela família): voltar para a própria.
   O 2FA do master ainda NÃO é exigido (o do Gabriel está desligado). NÃO testado no navegador.
+- DEPLOY DAS DEPENDÊNCIAS (2026-11-25, incidente "sistema fora do ar"): a Discloud instala só o `package.json` da RAIZ e sobe
+  `MoneySpace-Back/server.js`. Então TODA dependência de runtime do back precisa estar no `package.json` da RAIZ (e no lock da raiz).
+  O helmet foi adicionado só no `MoneySpace-Back/package.json` e o deploy quebrou com `Cannot find package 'helmet'`. Corrigido
+  adicionando na raiz. Regra: `npm install <pacote>` SEMPRE na raiz (`MoneySpace-Back/package.json` só espelha). Antes de subir,
+  testar a instalação limpa da raiz (`npm ci --omit=dev` numa cópia do package.json e do lock).
 - DEPENDÊNCIAS (2026-11-24): `pg` saiu de `optionalDependencies` e agora está em `dependencies` (sem ele o app não sobe; testado com
   `npm ci --omit=optional`). Front: `npm audit fix` levou o Vite para 8.3.8 (2 vulnerabilidades altas corrigidas, 0 agora).
   Back: 0 vulnerabilidades no `npm audit`.
